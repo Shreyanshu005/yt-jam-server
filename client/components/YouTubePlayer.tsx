@@ -91,10 +91,20 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     if (!playerRef.current || !videoId) return;
 
     try {
+      // Only load if it's a different video
+      const currentVideoData = playerRef.current.getVideoData?.();
+      if (currentVideoData && currentVideoData.video_id === videoId) {
+        console.log('Video already loaded:', videoId);
+        return;
+      }
+
       // Check if player is ready before loading
       if (playerRef.current.loadVideoById) {
         console.log('Loading new video:', videoId);
-        playerRef.current.loadVideoById(videoId);
+        playerRef.current.loadVideoById({
+          videoId: videoId,
+          startSeconds: 0,
+        });
       }
     } catch (error) {
       console.error('Error loading video:', error);

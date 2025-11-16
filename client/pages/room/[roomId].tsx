@@ -35,6 +35,7 @@ export default function RoomPage() {
   const lastKnownTime = useRef<number>(0);
   const isPlayingBeforeSeek = useRef<boolean>(false);
   const seekDetectionInterval = useRef<any>(null);
+  const justJoinedRoom = useRef<boolean>(false);
 
   const DRIFT_THRESHOLD = 1.0; // seconds (increased to reduce over-correction)
   const SYNC_INTERVAL = 5000; // 5 seconds (less frequent checks)
@@ -48,23 +49,39 @@ export default function RoomPage() {
     lastKnownTime.current = data.currentTime || 0;
     lastSyncTime.current = Date.now();
 
+    // Seek to current time
     if (data.currentTime > 0) {
       playerRef.current.seekTo(data.currentTime, true);
     }
 
+    // Auto-play if video is playing
     if (data.isPlaying) {
-      console.log('Auto-playing video for new joiner');
+      console.log('Auto-playing video for new joiner at', data.currentTime, 's');
+      // Use multiple attempts to ensure playback starts
       setTimeout(() => {
         if (playerRef.current) {
           playerRef.current.playVideo();
+          console.log('First play attempt');
         }
-      }, 500); // Longer delay to ensure seek completes
+      }, 300);
+
+      // Second attempt for better reliability
+      setTimeout(() => {
+        if (playerRef.current) {
+          const state = playerRef.current.getPlayerState();
+          // Only play if not already playing (state 1 = playing)
+          if (state !== 1) {
+            playerRef.current.playVideo();
+            console.log('Second play attempt (player was in state:', state, ')');
+          }
+        }
+      }, 800);
     }
 
-    // Clear the ignore flag
+    // Clear the ignore flag after all attempts
     setTimeout(() => {
       ignoreNextStateChange.current = false;
-    }, 800);
+    }, 1200);
   }, []);
 
   // Initialize socket connection
@@ -118,6 +135,13 @@ export default function RoomPage() {
       setIsHost(data.isHost);
       setUserCount(data.userCount);
       setIsLoading(false);
+
+      // Mark that we just joined to prevent emitting events immediately
+      justJoinedRoom.current = true;
+      setTimeout(() => {
+        justJoinedRoom.current = false;
+        console.log('Join grace period ended - can now emit events');
+      }, 3000); // 3 second grace period after joining
 
       // If player is ready, sync immediately. Otherwise, save for later
       if (playerRef.current) {
@@ -199,21 +223,23 @@ export default function RoomPage() {
       }
     });
 
-    // Video changed by host
+    // Video changed by anyone
     socket.on('video-changed', (data: any) => {
       console.log('Video changed to:', data.videoId);
       setVideoId(data.videoId);
       setInputUrl('');
       setPlayerError(null);
 
-      // Reset player state
+      // Reset player state to prevent seek detection during load
       lastKnownTime.current = 0;
+      lastSyncTime.current = Date.now();
       ignoreNextStateChange.current = true;
 
-      // Clear ignore flag after video loads
+      // Clear ignore flag after video loads (longer delay for video change)
       setTimeout(() => {
         ignoreNextStateChange.current = false;
-      }, 1000);
+        lastKnownTime.current = 0; // Reset again after load
+      }, 2000);
     });
 
     // Disabled automatic drift correction to prevent stuttering
@@ -317,6 +343,12 @@ export default function RoomPage() {
       return; // Don't reset the flag - let setTimeout handle it
     }
 
+    // Don't emit events if we just joined (prevents restarting video for everyone)
+    if (justJoinedRoom.current) {
+      console.log('State change ignored (just joined room, in grace period)');
+      return;
+    }
+
     if (!socketRef.current || !roomId) return;
 
     const state = event.data;
@@ -338,12 +370,12 @@ export default function RoomPage() {
 
     switch (state) {
       case YT_STATES.PLAYING:
-        console.log('Emitting play event');
+        console.log('Emitting play event at', currentTime, 's');
         socketRef.current.emit('play', { roomId, time: currentTime });
         break;
 
       case YT_STATES.PAUSED:
-        console.log('Emitting pause event');
+        console.log('Emitting pause event at', currentTime, 's');
         socketRef.current.emit('pause', { roomId, time: currentTime });
         break;
     }
@@ -379,17 +411,23 @@ export default function RoomPage() {
     }
 
     if (socketRef.current && roomId) {
+      console.log('Changing video to:', newVideoId);
+
       // Update locally immediately
       setVideoId(newVideoId);
       setInputUrl('');
       setPlayerError(null);
+
+      // Reset tracking to prevent seek detection during video load
       lastKnownTime.current = 0;
+      lastSyncTime.current = Date.now();
       ignoreNextStateChange.current = true;
 
-      // Clear ignore flag after video loads
+      // Clear ignore flag after video loads (longer delay for video change)
       setTimeout(() => {
         ignoreNextStateChange.current = false;
-      }, 1000);
+        lastKnownTime.current = 0; // Reset again after load
+      }, 2000);
 
       // Broadcast to others
       socketRef.current.emit('change-video', { roomId, videoId: newVideoId });
