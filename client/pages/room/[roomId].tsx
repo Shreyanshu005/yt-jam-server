@@ -25,15 +25,47 @@ export default function RoomPage() {
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [pendingRoomState, setPendingRoomState] = useState<any>(null);
 
   const playerRef = useRef<any>(null);
   const socketRef = useRef<any>(null);
   const syncIntervalRef = useRef<any>(null);
   const ignoreNextStateChange = useRef<boolean>(false);
   const lastSyncTime = useRef<number>(0);
+  const lastKnownTime = useRef<number>(0);
+  const isPlayingBeforeSeek = useRef<boolean>(false);
+  const seekDetectionInterval = useRef<any>(null);
 
   const DRIFT_THRESHOLD = 1.0; // seconds (increased to reduce over-correction)
   const SYNC_INTERVAL = 5000; // 5 seconds (less frequent checks)
+
+  // Sync to room state helper function
+  const syncToRoomState = useCallback((data: any) => {
+    if (!playerRef.current) return;
+
+    console.log('Syncing to room state:', data);
+    ignoreNextStateChange.current = true;
+    lastKnownTime.current = data.currentTime || 0;
+    lastSyncTime.current = Date.now();
+
+    if (data.currentTime > 0) {
+      playerRef.current.seekTo(data.currentTime, true);
+    }
+
+    if (data.isPlaying) {
+      console.log('Auto-playing video for new joiner');
+      setTimeout(() => {
+        if (playerRef.current) {
+          playerRef.current.playVideo();
+        }
+      }, 500); // Longer delay to ensure seek completes
+    }
+
+    // Clear the ignore flag
+    setTimeout(() => {
+      ignoreNextStateChange.current = false;
+    }, 800);
+  }, []);
 
   // Initialize socket connection
   useEffect(() => {
@@ -87,16 +119,12 @@ export default function RoomPage() {
       setUserCount(data.userCount);
       setIsLoading(false);
 
-      // Sync to current state
-      if (playerRef.current && data.currentTime > 0) {
-        ignoreNextStateChange.current = true;
-        playerRef.current.seekTo(data.currentTime, true);
-
-        if (data.isPlaying) {
-          setTimeout(() => {
-            playerRef.current.playVideo();
-          }, 100);
-        }
+      // If player is ready, sync immediately. Otherwise, save for later
+      if (playerRef.current) {
+        syncToRoomState(data);
+      } else {
+        console.log('Player not ready yet, saving room state for later');
+        setPendingRoomState(data);
       }
     });
 
@@ -115,10 +143,19 @@ export default function RoomPage() {
     socket.on('play', (data: any) => {
       if (playerRef.current) {
         ignoreNextStateChange.current = true;
+        lastKnownTime.current = data.time;
+        lastSyncTime.current = Date.now();
         playerRef.current.seekTo(data.time, true);
         setTimeout(() => {
-          playerRef.current.playVideo();
+          if (playerRef.current) {
+            playerRef.current.playVideo();
+          }
         }, 50);
+
+        // Clear the ignore flag after playback starts
+        setTimeout(() => {
+          ignoreNextStateChange.current = false;
+        }, 500);
       }
     });
 
@@ -126,8 +163,15 @@ export default function RoomPage() {
     socket.on('pause', (data: any) => {
       if (playerRef.current) {
         ignoreNextStateChange.current = true;
+        lastKnownTime.current = data.time;
+        lastSyncTime.current = Date.now();
         playerRef.current.seekTo(data.time, true);
         playerRef.current.pauseVideo();
+
+        // Clear the ignore flag after pause completes
+        setTimeout(() => {
+          ignoreNextStateChange.current = false;
+        }, 500);
       }
     });
 
@@ -135,7 +179,23 @@ export default function RoomPage() {
     socket.on('seek', (data: any) => {
       if (playerRef.current) {
         ignoreNextStateChange.current = true;
+        lastKnownTime.current = data.time;
+        lastSyncTime.current = Date.now(); // Prevent immediate re-sync
         playerRef.current.seekTo(data.time, true);
+
+        // Resume playback if it was playing before the seek
+        if (data.isPlaying) {
+          setTimeout(() => {
+            if (playerRef.current) {
+              playerRef.current.playVideo();
+            }
+          }, 100);
+        }
+
+        // Clear the ignore flag after a delay
+        setTimeout(() => {
+          ignoreNextStateChange.current = false;
+        }, 300);
       }
     });
 
@@ -144,6 +204,16 @@ export default function RoomPage() {
       console.log('Video changed to:', data.videoId);
       setVideoId(data.videoId);
       setInputUrl('');
+      setPlayerError(null);
+
+      // Reset player state
+      lastKnownTime.current = 0;
+      ignoreNextStateChange.current = true;
+
+      // Clear ignore flag after video loads
+      setTimeout(() => {
+        ignoreNextStateChange.current = false;
+      }, 1000);
     });
 
     // Disabled automatic drift correction to prevent stuttering
@@ -155,6 +225,9 @@ export default function RoomPage() {
       clearTimeout(loadingTimeout);
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
+      }
+      if (seekDetectionInterval.current) {
+        clearInterval(seekDetectionInterval.current);
       }
       socket.off('connect');
       socket.off('disconnect');
@@ -179,16 +252,69 @@ export default function RoomPage() {
     console.log('Player ready');
     playerRef.current = player;
 
-    // Disable automatic drift correction - everyone controls playback directly
-    // This prevents the stuttering/seeking issues
-    // Users sync naturally through play/pause/seek events
-  }, [roomId, isHost]);
+    // Apply pending room state if exists
+    if (pendingRoomState) {
+      console.log('Applying pending room state');
+      syncToRoomState(pendingRoomState);
+      setPendingRoomState(null);
+    }
+
+    // Start monitoring for manual seeks
+    if (seekDetectionInterval.current) {
+      clearInterval(seekDetectionInterval.current);
+    }
+
+    seekDetectionInterval.current = setInterval(() => {
+      if (!playerRef.current || !socketRef.current || !roomId) return;
+
+      try {
+        const currentTime = playerRef.current.getCurrentTime();
+        const playerState = playerRef.current.getPlayerState();
+
+        // Detect manual seek: time jumped more than 1.5 seconds
+        const timeDiff = Math.abs(currentTime - lastKnownTime.current);
+        const now = Date.now();
+
+        // Only detect seeks if:
+        // 1. Time jumped significantly (>1.5s)
+        // 2. Not ignoring state changes (not from network sync)
+        // 3. At least 500ms since last sync (debounce)
+        if (timeDiff > 1.5 && !ignoreNextStateChange.current && (now - lastSyncTime.current) > 500) {
+          const isCurrentlyPlaying = playerState === YT_STATES.PLAYING || playerState === YT_STATES.BUFFERING;
+
+          console.log(`Manual seek detected: ${lastKnownTime.current.toFixed(1)}s -> ${currentTime.toFixed(1)}s (playing: ${isCurrentlyPlaying})`);
+
+          // Ignore subsequent state changes for 1 second to prevent pause event during seek
+          ignoreNextStateChange.current = true;
+          setTimeout(() => {
+            ignoreNextStateChange.current = false;
+          }, 1000);
+
+          // Emit seek event with current playing state
+          socketRef.current.emit('seek', {
+            roomId,
+            time: currentTime,
+            isPlaying: isCurrentlyPlaying
+          });
+
+          // Update sync time and last known time immediately to prevent loop
+          lastSyncTime.current = now;
+          lastKnownTime.current = currentTime;
+        } else {
+          // Normal playback - update lastKnownTime gradually
+          lastKnownTime.current = currentTime;
+        }
+      } catch (error) {
+        // Player might not be fully ready yet
+      }
+    }, 200); // Check every 200ms for seeks
+  }, [roomId, pendingRoomState, syncToRoomState]);
 
   // Player state change callback
   const handleStateChange = useCallback((event: any) => {
     if (ignoreNextStateChange.current) {
-      ignoreNextStateChange.current = false;
-      return;
+      console.log('State change ignored (ignoreNextStateChange flag set)');
+      return; // Don't reset the flag - let setTimeout handle it
     }
 
     if (!socketRef.current || !roomId) return;
@@ -205,6 +331,7 @@ export default function RoomPage() {
     // Throttle events to prevent spam
     const now = Date.now();
     if (now - lastSyncTime.current < 1000) {
+      console.log('State change throttled');
       return;
     }
     lastSyncTime.current = now;
@@ -252,9 +379,20 @@ export default function RoomPage() {
     }
 
     if (socketRef.current && roomId) {
-      socketRef.current.emit('change-video', { roomId, videoId: newVideoId });
+      // Update locally immediately
+      setVideoId(newVideoId);
       setInputUrl('');
       setPlayerError(null);
+      lastKnownTime.current = 0;
+      ignoreNextStateChange.current = true;
+
+      // Clear ignore flag after video loads
+      setTimeout(() => {
+        ignoreNextStateChange.current = false;
+      }, 1000);
+
+      // Broadcast to others
+      socketRef.current.emit('change-video', { roomId, videoId: newVideoId });
     }
   };
 

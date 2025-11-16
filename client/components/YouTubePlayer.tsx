@@ -44,14 +44,9 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     return () => clearInterval(checkAPIReady);
   }, []);
 
-  // Initialize player when API is ready
+  // Initialize player when API is ready (only once)
   useEffect(() => {
-    if (!isAPIReady || !containerRef.current) return;
-
-    // Destroy existing player
-    if (playerRef.current) {
-      playerRef.current.destroy();
-    }
+    if (!isAPIReady || !containerRef.current || playerRef.current) return;
 
     // Create new player
     playerRef.current = new window.YT.Player(containerRef.current, {
@@ -86,9 +81,25 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     return () => {
       if (playerRef.current) {
         playerRef.current.destroy();
+        playerRef.current = null;
       }
     };
-  }, [isAPIReady, videoId, onReady, onStateChange, onError]);
+  }, [isAPIReady, onReady, onStateChange, onError]);
+
+  // Handle video ID changes by loading new video (don't recreate player)
+  useEffect(() => {
+    if (!playerRef.current || !videoId) return;
+
+    try {
+      // Check if player is ready before loading
+      if (playerRef.current.loadVideoById) {
+        console.log('Loading new video:', videoId);
+        playerRef.current.loadVideoById(videoId);
+      }
+    } catch (error) {
+      console.error('Error loading video:', error);
+    }
+  }, [videoId]);
 
   return (
     <div className="w-full aspect-video bg-black rounded-lg overflow-hidden shadow-2xl">

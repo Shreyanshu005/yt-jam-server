@@ -147,17 +147,18 @@ io.on('connection', (socket) => {
   });
 
   // Handle seek action
-  socket.on('seek', ({ roomId, time }) => {
+  socket.on('seek', ({ roomId, time, isPlaying }) => {
     const room = rooms.get(roomId);
     if (!room) return;
 
     room.currentTime = time;
+    room.isPlaying = isPlaying !== undefined ? isPlaying : room.isPlaying;
     room.lastUpdate = Date.now();
 
-    console.log(`Room ${roomId}: Seek to ${time}s`);
+    console.log(`Room ${roomId}: Seek to ${time}s (playing: ${room.isPlaying})`);
 
-    // Broadcast to all users in the room except sender
-    socket.to(roomId).emit('seek', { time });
+    // Broadcast to all users in the room except sender, including playback state
+    socket.to(roomId).emit('seek', { time, isPlaying: room.isPlaying });
   });
 
   // Handle video change (anyone can change)
@@ -172,8 +173,8 @@ io.on('connection', (socket) => {
 
     console.log(`Room ${roomId}: Video changed to ${videoId} by ${socket.id}`);
 
-    // Broadcast to all users in the room including sender
-    io.to(roomId).emit('video-changed', { videoId });
+    // Broadcast to all users in the room EXCEPT sender (sender already updated locally)
+    socket.to(roomId).emit('video-changed', { videoId });
   });
 
   // Handle time sync (for drift correction)
