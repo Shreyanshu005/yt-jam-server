@@ -660,13 +660,27 @@ export default function RoomPage() {
             </div>
           </div>
 
-          {/* Back to Home */}
-          <button
-            onClick={() => router.push('/')}
-            className="w-full bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg font-semibold transition-colors"
-          >
-            ← Leave Room
-          </button>
+              {/* Back to Home */}
+              <button
+                onClick={() => router.push('/')}
+                className="w-full bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg font-semibold transition-colors"
+              >
+                ← Leave Room
+              </button>
+            </div>
+
+            {/* Right Column - Chat */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-8 h-[600px]">
+                <Chat
+                  messages={messages}
+                  onSendMessage={handleSendMessage}
+                  username={username}
+                  currentUserId={userId}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </main>
     </div>
