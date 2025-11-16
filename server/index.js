@@ -107,7 +107,8 @@ io.on('connection', (socket) => {
       isPlaying: room.isPlaying,
       currentTime: room.currentTime,
       isHost: room.host === socket.id,
-      userCount: room.users.size
+      userCount: room.users.size,
+      timestamp: Date.now() // Add timestamp for sync calculation
     });
 
     // Notify all users in the room about the new user count
@@ -224,6 +225,25 @@ io.on('connection', (socket) => {
         }
       }
     });
+  });
+
+  // Handle chat messages
+  socket.on('send-message', ({ roomId, message, username }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const chatMessage = {
+      id: `${socket.id}-${Date.now()}`,
+      userId: socket.id,
+      username: username || 'Anonymous',
+      message: message,
+      timestamp: Date.now()
+    };
+
+    console.log(`Room ${roomId}: Message from ${username}: ${message}`);
+
+    // Broadcast to all users in the room including sender
+    io.to(roomId).emit('new-message', chatMessage);
   });
 
   // Handle explicit leave room

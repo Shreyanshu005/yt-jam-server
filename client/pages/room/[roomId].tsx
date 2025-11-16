@@ -1,8 +1,17 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import YouTubePlayer from '@/components/YouTubePlayer';
+import Chat from '@/components/Chat';
 import { getSocket } from '@/lib/socket';
 import { extractVideoId } from '@/lib/youtube';
+
+interface Message {
+  id: string;
+  userId: string;
+  username: string;
+  message: string;
+  timestamp: number;
+}
 
 // YouTube Player States
 const YT_STATES = {
@@ -26,6 +35,9 @@ export default function RoomPage() {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [pendingRoomState, setPendingRoomState] = useState<any>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [username, setUsername] = useState<string>('');
+  const [userId, setUserId] = useState<string>('');
 
   const playerRef = useRef<any>(null);
   const socketRef = useRef<any>(null);
@@ -46,42 +58,64 @@ export default function RoomPage() {
 
     console.log('Syncing to room state:', data);
     ignoreNextStateChange.current = true;
-    lastKnownTime.current = data.currentTime || 0;
     lastSyncTime.current = Date.now();
 
-    // Seek to current time
-    if (data.currentTime > 0) {
-      playerRef.current.seekTo(data.currentTime, true);
+    // Calculate actual time accounting for network delay
+    let targetTime = data.currentTime || 0;
+
+    if (data.isPlaying && data.timestamp) {
+      // Calculate elapsed time since the room state was sent
+      const now = Date.now();
+      const elapsed = (now - data.timestamp) / 1000; // Convert to seconds
+      targetTime = data.currentTime + elapsed;
+      console.log(`Syncing with time adjustment: base=${data.currentTime}s + elapsed=${elapsed.toFixed(2)}s = ${targetTime.toFixed(2)}s`);
+    } else {
+      console.log('Syncing to time:', targetTime, 's');
     }
 
-    // Auto-play if video is playing
+    lastKnownTime.current = targetTime;
+
+    // Seek to calculated time
+    if (targetTime > 0) {
+      playerRef.current.seekTo(targetTime, true);
+    }
+
+    // Always try to play if video should be playing
     if (data.isPlaying) {
-      console.log('Auto-playing video for new joiner at', data.currentTime, 's');
-      // Use multiple attempts to ensure playback starts
+      console.log('Force-playing video for new joiner');
+
+      // Immediate play attempt
       setTimeout(() => {
         if (playerRef.current) {
           playerRef.current.playVideo();
-          console.log('First play attempt');
+          console.log('Immediate play attempt');
         }
-      }, 300);
+      }, 100);
 
-      // Second attempt for better reliability
+      // Second attempt
+      setTimeout(() => {
+        if (playerRef.current) {
+          playerRef.current.playVideo();
+          console.log('Second play attempt');
+        }
+      }, 500);
+
+      // Third attempt - force it
       setTimeout(() => {
         if (playerRef.current) {
           const state = playerRef.current.getPlayerState();
-          // Only play if not already playing (state 1 = playing)
-          if (state !== 1) {
+          if (state !== 1) { // Not playing
             playerRef.current.playVideo();
-            console.log('Second play attempt (player was in state:', state, ')');
+            console.log('Third play attempt (was in state:', state, ')');
           }
         }
-      }, 800);
+      }, 1000);
     }
 
     // Clear the ignore flag after all attempts
     setTimeout(() => {
       ignoreNextStateChange.current = false;
-    }, 1200);
+    }, 1500);
   }, []);
 
   // Initialize socket connection
@@ -108,7 +142,14 @@ export default function RoomPage() {
 
     socket.on('connect', () => {
       setIsConnected(true);
+      setUserId(socket.id || '');
       console.log('Connected to server');
+
+      // Generate username if not set
+      if (!username) {
+        const randomName = `User${Math.floor(Math.random() * 1000)}`;
+        setUsername(randomName);
+      }
 
       // Join the room with initial video ID
       socket.emit('join-room', { roomId, videoId: initialVideoId });
@@ -141,7 +182,7 @@ export default function RoomPage() {
       setTimeout(() => {
         justJoinedRoom.current = false;
         console.log('Join grace period ended - can now emit events');
-      }, 3000); // 3 second grace period after joining
+      }, 2000); // 2 second grace period after joining (reduced for faster interaction)
 
       // If player is ready, sync immediately. Otherwise, save for later
       if (playerRef.current) {
@@ -246,6 +287,12 @@ export default function RoomPage() {
     // Everyone controls playback directly, no need for continuous sync
     // socket.on('time-update', ...) - REMOVED
 
+    // Chat message received
+    socket.on('new-message', (message: Message) => {
+      console.log('New message received:', message);
+      setMessages((prev) => [...prev, message]);
+    });
+
     // Cleanup
     return () => {
       clearTimeout(loadingTimeout);
@@ -265,6 +312,7 @@ export default function RoomPage() {
       socket.off('seek');
       socket.off('video-changed');
       socket.off('time-update');
+      socket.off('new-message');
 
       // Leave room on unmount
       if (roomId) {
@@ -445,6 +493,17 @@ export default function RoomPage() {
     });
   };
 
+  // Send chat message
+  const handleSendMessage = (message: string) => {
+    if (socketRef.current && roomId && message.trim()) {
+      socketRef.current.emit('send-message', {
+        roomId,
+        message: message.trim(),
+        username: username || 'Anonymous'
+      });
+    }
+  };
+
   if (!roomId || isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex items-center justify-center">
@@ -494,21 +553,24 @@ export default function RoomPage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <div className="max-w-5xl mx-auto space-y-6">
-          {/* Player */}
-          <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
-            <YouTubePlayer
-              videoId={videoId}
-              onReady={handlePlayerReady}
-              onStateChange={handleStateChange}
-              onError={handlePlayerError}
-            />
-            {playerError && (
-              <div className="mt-4 bg-red-500/20 border border-red-500 rounded-lg p-4">
-                <p className="text-red-400">⚠️ {playerError}</p>
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column - Video and Controls */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Player */}
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <YouTubePlayer
+                  videoId={videoId}
+                  onReady={handlePlayerReady}
+                  onStateChange={handleStateChange}
+                  onError={handlePlayerError}
+                />
+                {playerError && (
+                  <div className="mt-4 bg-red-500/20 border border-red-500 rounded-lg p-4">
+                    <p className="text-red-400">⚠️ {playerError}</p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
           {/* Controls */}
           <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 space-y-4">

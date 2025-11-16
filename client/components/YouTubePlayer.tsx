@@ -54,13 +54,14 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
       width: '100%',
       videoId: videoId,
       playerVars: {
-        autoplay: 0,
+        autoplay: 1, // Enable autoplay
         controls: 1,
         modestbranding: 1,
         rel: 0,
         showinfo: 0,
         fs: 1,
         playsinline: 1,
+        mute: 0, // Not muted (users can control volume)
       },
       events: {
         onReady: (event: any) => {
