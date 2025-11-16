@@ -160,23 +160,17 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('seek', { time });
   });
 
-  // Handle video change
+  // Handle video change (anyone can change)
   socket.on('change-video', ({ roomId, videoId }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-
-    // Only allow host to change video
-    if (room.host !== socket.id) {
-      socket.emit('error', { message: 'Only the host can change the video' });
-      return;
-    }
 
     room.videoId = videoId;
     room.currentTime = 0;
     room.isPlaying = false;
     room.lastUpdate = Date.now();
 
-    console.log(`Room ${roomId}: Video changed to ${videoId}`);
+    console.log(`Room ${roomId}: Video changed to ${videoId} by ${socket.id}`);
 
     // Broadcast to all users in the room including sender
     io.to(roomId).emit('video-changed', { videoId });

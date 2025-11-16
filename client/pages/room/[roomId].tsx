@@ -32,8 +32,8 @@ export default function RoomPage() {
   const ignoreNextStateChange = useRef<boolean>(false);
   const lastSyncTime = useRef<number>(0);
 
-  const DRIFT_THRESHOLD = 0.3; // seconds
-  const SYNC_INTERVAL = 2000; // 2 seconds
+  const DRIFT_THRESHOLD = 1.0; // seconds (increased to reduce over-correction)
+  const SYNC_INTERVAL = 5000; // 5 seconds (less frequent checks)
 
   // Initialize socket connection
   useEffect(() => {
@@ -146,28 +146,9 @@ export default function RoomPage() {
       setInputUrl('');
     });
 
-    // Time sync from host (drift correction)
-    socket.on('time-update', (data: any) => {
-      if (playerRef.current && !isHost) {
-        const currentTime = playerRef.current.getCurrentTime();
-        const drift = Math.abs(currentTime - data.time);
-
-        // Only correct if drift is significant
-        if (drift > DRIFT_THRESHOLD) {
-          console.log(`Drift detected: ${drift.toFixed(2)}s - Correcting...`);
-          ignoreNextStateChange.current = true;
-          playerRef.current.seekTo(data.time, true);
-
-          // Sync play state
-          const playerState = playerRef.current.getPlayerState();
-          if (data.isPlaying && playerState !== YT_STATES.PLAYING) {
-            playerRef.current.playVideo();
-          } else if (!data.isPlaying && playerState === YT_STATES.PLAYING) {
-            playerRef.current.pauseVideo();
-          }
-        }
-      }
-    });
+    // Disabled automatic drift correction to prevent stuttering
+    // Everyone controls playback directly, no need for continuous sync
+    // socket.on('time-update', ...) - REMOVED
 
     // Cleanup
     return () => {
@@ -198,22 +179,9 @@ export default function RoomPage() {
     console.log('Player ready');
     playerRef.current = player;
 
-    // Start sync interval for host
-    if (isHost) {
-      syncIntervalRef.current = setInterval(() => {
-        if (playerRef.current && socketRef.current) {
-          const currentTime = playerRef.current.getCurrentTime();
-          const playerState = playerRef.current.getPlayerState();
-          const isPlaying = playerState === YT_STATES.PLAYING;
-
-          socketRef.current.emit('sync-time', {
-            roomId,
-            time: currentTime,
-            isPlaying,
-          });
-        }
-      }, SYNC_INTERVAL);
-    }
+    // Disable automatic drift correction - everyone controls playback directly
+    // This prevents the stuttering/seeking issues
+    // Users sync naturally through play/pause/seek events
   }, [roomId, isHost]);
 
   // Player state change callback
@@ -228,9 +196,15 @@ export default function RoomPage() {
     const state = event.data;
     const currentTime = playerRef.current?.getCurrentTime() || 0;
 
+    // Ignore buffering states - they cause sync loops
+    if (state === YT_STATES.BUFFERING) {
+      console.log('Buffering... (ignored)');
+      return;
+    }
+
     // Throttle events to prevent spam
     const now = Date.now();
-    if (now - lastSyncTime.current < 500) {
+    if (now - lastSyncTime.current < 1000) {
       return;
     }
     lastSyncTime.current = now;
@@ -244,12 +218,6 @@ export default function RoomPage() {
       case YT_STATES.PAUSED:
         console.log('Emitting pause event');
         socketRef.current.emit('pause', { roomId, time: currentTime });
-        break;
-
-      case YT_STATES.BUFFERING:
-        // Emit seek when buffering (user likely seeked)
-        console.log('Emitting seek event');
-        socketRef.current.emit('seek', { roomId, time: currentTime });
         break;
     }
   }, [roomId]);
@@ -270,13 +238,8 @@ export default function RoomPage() {
     console.error('Player error:', errorMsg);
   }, []);
 
-  // Change video (host only)
+  // Change video (anyone can change)
   const handleChangeVideo = () => {
-    if (!isHost) {
-      alert('Only the host can change the video');
-      return;
-    }
-
     if (!inputUrl.trim()) {
       alert('Please enter a YouTube URL or video ID');
       return;
@@ -378,28 +341,27 @@ export default function RoomPage() {
             {/* Change Video */}
             <div>
               <label className="block text-sm text-gray-400 mb-2">
-                {isHost ? '🎬 Change Video' : '🎬 Current Video'} {!isHost && '(Host controls)'}
+                🎬 Change Video {isHost && '(You are Host)'}
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
-                  placeholder={isHost ? "Paste YouTube URL or video ID (e.g., dQw4w9WgXcQ)" : "Only host can change video"}
-                  className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-                  disabled={!isHost}
+                  placeholder="Paste YouTube URL or video ID (e.g., dQw4w9WgXcQ)"
+                  className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500"
                   onKeyPress={(e) => {
-                    if (e.key === 'Enter' && isHost) {
+                    if (e.key === 'Enter') {
                       handleChangeVideo();
                     }
                   }}
                 />
                 <button
                   onClick={handleChangeVideo}
-                  disabled={!isHost || !inputUrl.trim()}
+                  disabled={!inputUrl.trim()}
                   className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap"
                 >
-                  {isHost ? 'Change' : 'Locked'}
+                  Change
                 </button>
               </div>
               <div className="mt-2 flex items-center justify-between">
@@ -415,11 +377,9 @@ export default function RoomPage() {
                   Open on YouTube ↗
                 </a>
               </div>
-              {isHost && (
-                <p className="text-xs text-green-400 mt-2">
-                  💡 Tip: You can paste full YouTube URLs or just the video ID
-                </p>
-              )}
+              <p className="text-xs text-green-400 mt-2">
+                💡 Anyone in the room can change the video, play, pause, or seek!
+              </p>
             </div>
 
             {/* Share Room */}
@@ -447,15 +407,18 @@ export default function RoomPage() {
             <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
               <p className="text-sm text-gray-400">
                 ℹ️ {isHost
-                  ? 'You are the host. Your playback controls are synced to all viewers.'
-                  : 'You are viewing as a participant. Playback is controlled by the host.'}
+                  ? 'You are the host (first to join). Everyone can control playback!'
+                  : 'You are a participant. Everyone can play, pause, seek, and change videos!'}
               </p>
               {userCount > 1 && (
                 <p className="text-sm text-green-400 mt-2">
-                  ✨ You're listening with {userCount - 1} other{' '}
+                  ✨ You're watching with {userCount - 1} other{' '}
                   {userCount - 1 === 1 ? 'person' : 'people'}!
                 </p>
               )}
+              <p className="text-sm text-blue-400 mt-2">
+                🎮 All controls are synced in real-time across all viewers
+              </p>
             </div>
           </div>
 
