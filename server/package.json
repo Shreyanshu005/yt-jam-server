@@ -1,13 +1,13 @@
 {
-  "name": "youtube-sync-server",
+  "name": "soundcloud-sync-server",
   "version": "1.0.0",
-  "description": "Real-time synchronized YouTube playback server",
+  "description": "Real-time synchronized SoundCloud playback server",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "keywords": ["youtube", "sync", "websocket", "socketio"],
+  "keywords": ["soundcloud", "sync", "websocket", "socketio"],
   "author": "",
   "license": "MIT",
   "dependencies": {

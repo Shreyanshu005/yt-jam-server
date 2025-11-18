@@ -1,47 +1,40 @@
-# 🛠️ Complete Setup Guide
+# SoundCloud Sync - Setup Guide
 
-Step-by-step instructions to get YouTube Sync running locally.
+A real-time synchronized music player for SoundCloud with search, queue management, and chat.
 
-## 📋 Prerequisites
+## Prerequisites
 
-Before you begin, ensure you have:
+- Node.js 18+ 
+- npm or yarn
+- SoundCloud API credentials
 
-- ✅ **Node.js** 18.0.0 or higher ([Download](https://nodejs.org))
-- ✅ **npm** (comes with Node.js) or **yarn**
-- ✅ **Git** ([Download](https://git-scm.com))
-- ✅ A code editor (VS Code recommended)
-- ✅ Two browser windows/tabs (for testing sync)
+## 1. Get SoundCloud API Credentials
 
-### Verify Prerequisites
+1. **Register your app** at [SoundCloud Developer Portal](https://soundcloud.com/you/apps)
+2. Click **"Register a new app"**
+3. Fill in the form:
+   - **App name**: Your app name (e.g., "SoundCloud Sync")
+   - **App description**: Brief description
+   - **App website**: `http://localhost:3000` (for development)
+   - **Redirect URI**: `http://localhost:3000/callback` ⚠️ **IMPORTANT**: This must be exact!
+4. Click **"Register"**
+5. You'll receive:
+   - **Client ID**
+   - **Client Secret**
 
-```bash
-node --version   # Should be v18.0.0 or higher
-npm --version    # Should be 9.0.0 or higher
-git --version    # Any recent version
-```
+⚠️ **Keep these credentials secure!** Never commit them to version control.
 
----
+### Important: Redirect URI Configuration
 
-## 🚀 Quick Start (5 Minutes)
+The redirect URI must be registered in your SoundCloud app settings:
+- **Development**: `http://localhost:3000/callback`
+- **Production**: `https://yourdomain.com/callback`
 
-### Step 1: Clone the Repository
+Make sure the redirect URI in your SoundCloud app settings **exactly matches** the one in your `.env` file!
 
-```bash
-# If you haven't cloned yet
-cd ~/Desktop  # or your preferred location
-git clone <your-repo-url>
-cd youtube-jam
-```
-
-If you already have the files:
-```bash
-cd youtube-jam
-```
-
-### Step 2: Setup Backend
+## 2. Server Setup
 
 ```bash
-# Navigate to server directory
 cd server
 
 # Install dependencies
@@ -50,518 +43,160 @@ npm install
 # Create environment file
 cp .env.example .env
 
-# Start the server
+# Edit .env and add your credentials
+nano .env  # or use your preferred editor
+```
+
+**server/.env** should look like:
+```env
+PORT=4000
+CLIENT_URL=http://localhost:3000
+NODE_ENV=development
+
+# Add your SoundCloud credentials here
+SOUNDCLOUD_CLIENT_ID=your_actual_client_id_here
+SOUNDCLOUD_CLIENT_SECRET=your_actual_client_secret_here
+
+# OAuth redirect URI (must match SoundCloud app settings)
+REDIRECT_URI=http://localhost:3000/callback
+```
+
+## 3. Client Setup
+
+```bash
+cd ../client
+
+# Install dependencies
+npm install
+
+# Create environment file
+cp .env.local.example .env.local
+
+# Edit if needed (defaults should work)
+nano .env.local
+```
+
+**client/.env.local** should look like:
+```env
+# SoundCloud OAuth Client ID (same as server)
+NEXT_PUBLIC_SOUNDCLOUD_CLIENT_ID=your_actual_client_id_here
+
+# Server URL for API and WebSocket connections
+NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
+```
+
+## 4. Run the Application
+
+Open **two terminal windows**:
+
+### Terminal 1 - Start the Server
+```bash
+cd server
 npm run dev
 ```
 
-**Expected output:**
+You should see:
 ```
+✅ SoundCloud token obtained
 🚀 Server running on port 4000
 📡 Socket.io ready for connections
 🌍 Environment: development
 ```
 
-✅ **Backend is running!** Keep this terminal open.
-
-### Step 3: Setup Frontend (New Terminal)
-
-Open a **new terminal window/tab**:
-
+### Terminal 2 - Start the Client
 ```bash
-# Navigate to client directory (from project root)
 cd client
-
-# Install dependencies
-npm install
-
-# Create environment file
-cp .env.local.example .env.local
-
-# Start the development server
 npm run dev
 ```
 
-**Expected output:**
+You should see:
 ```
 ready - started server on 0.0.0.0:3000, url: http://localhost:3000
 ```
 
-✅ **Frontend is running!** Keep this terminal open too.
+## 5. Access the App
 
-### Step 4: Open and Test
+Open your browser and go to: **http://localhost:3000**
 
-1. **Open Browser:** Navigate to [http://localhost:3000](http://localhost:3000)
+## Features
 
-2. **Create a Room:**
-   - Click "Create Room"
-   - You'll be redirected to a room page
+✅ **User Authentication** - Sign in with your SoundCloud account
+✅ **Track Search** - Search SoundCloud's entire library
+✅ **Queue Management** - Build and manage playlists
+✅ **Real-time Sync** - All users hear the same thing at the same time
+✅ **Chat** - Talk while you listen
+✅ **Room Sharing** - Share rooms with friends via link
+✅ **Player Controls** - Play, pause, skip tracks  
 
-3. **Test Sync (Important!):**
-   - Copy the room URL
-   - Open in incognito window or different browser
-   - Play/pause the video in one window
-   - Verify it syncs in the other window
+## Troubleshooting
 
-🎉 **If playback syncs, everything is working!**
+### "401 Unauthorized" Error
 
----
+This means your SoundCloud credentials are not configured correctly:
 
-## 📂 Project Structure Overview
+1. Check that your `.env` file in the `server` directory has the correct credentials
+2. Make sure you copied the **Client ID** and **Client Secret** exactly (no extra spaces)
+3. Restart the server after updating `.env`
+4. Check server logs for specific error messages
 
-```
-youtube-jam/
-│
-├── server/                    # Backend (Terminal 1)
-│   ├── index.js              # Main server file
-│   ├── package.json          # Backend dependencies
-│   ├── .env                  # Backend config (create this)
-│   └── .env.example          # Example config
-│
-├── client/                    # Frontend (Terminal 2)
-│   ├── pages/                # Next.js pages
-│   │   ├── index.tsx         # Home page
-│   │   └── room/[roomId].tsx # Room page
-│   ├── components/           # React components
-│   │   └── YouTubePlayer.tsx # YouTube player
-│   ├── lib/                  # Utilities
-│   │   ├── socket.ts         # Socket.io client
-│   │   └── youtube.ts        # YouTube helpers
-│   ├── package.json          # Frontend dependencies
-│   ├── .env.local            # Frontend config (create this)
-│   └── .env.local.example    # Example config
-│
-└── README.md                  # Documentation
-```
+### "SoundCloud credentials not configured"
 
----
+1. Make sure your `server/.env` file exists
+2. Check that `SOUNDCLOUD_CLIENT_ID` and `SOUNDCLOUD_CLIENT_SECRET` are set
+3. Restart the server
 
-## 🔧 Detailed Setup
+### Search returns no results
 
-### Backend Setup (Detailed)
-
-#### 1. Install Dependencies
-
-```bash
-cd server
-npm install
-```
-
-**Installed packages:**
-- `express` - Web server
-- `socket.io` - WebSocket library
-- `cors` - CORS middleware
-
-#### 2. Configure Environment
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
-```env
-PORT=4000
-CLIENT_URL=http://localhost:3000
-NODE_ENV=development
-```
-
-**Environment Variables Explained:**
-- `PORT`: Server port (default: 4000)
-- `CLIENT_URL`: Frontend URL for CORS (must match frontend)
-- `NODE_ENV`: Environment (development/production)
-
-#### 3. Start Server
-
-**Development mode (with auto-reload):**
-```bash
-npm run dev
-```
-
-**Production mode:**
-```bash
-npm start
-```
-
-#### 4. Verify Backend
-
-Open [http://localhost:4000/health](http://localhost:4000/health)
-
-Expected response:
-```json
-{
-  "status": "ok",
-  "rooms": 0,
-  "timestamp": "2025-01-16T12:00:00.000Z"
-}
-```
-
-### Frontend Setup (Detailed)
-
-#### 1. Install Dependencies
-
-```bash
-cd client
-npm install
-```
-
-**Installed packages:**
-- `next` - React framework
-- `react` & `react-dom` - React library
-- `socket.io-client` - WebSocket client
-- `tailwindcss` - CSS framework
-- `typescript` - Type safety
-
-#### 2. Configure Environment
-
-```bash
-cp .env.local.example .env.local
-```
-
-Edit `.env.local`:
-```env
-NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
-```
-
-**Important:**
-- Must start with `NEXT_PUBLIC_` to be accessible in browser
-- Must match your backend URL
-- No trailing slash
-
-#### 3. Start Development Server
-
-```bash
-npm run dev
-```
-
-Server starts on [http://localhost:3000](http://localhost:3000)
-
-#### 4. Build for Production (Optional)
-
-```bash
-npm run build
-npm start
-```
-
----
-
-## 🧪 Testing the Application
-
-### Basic Functionality Test
-
-1. **Homepage Test:**
-   - Navigate to `http://localhost:3000`
-   - Verify both "Create Room" and "Join Room" sections appear
-   - Check console for errors (F12)
-
-2. **Create Room Test:**
-   - Click "Create Room"
-   - Verify redirect to `/room/[roomId]`
-   - Check video player loads
-   - Check connection indicator is green
-   - Check user count shows "1 person"
-   - Check "HOST" badge appears
-
-3. **Join Room Test:**
-   - Copy room URL from address bar
-   - Open in incognito/another browser
-   - Paste URL
-   - Verify you join the same room
-   - Check user count shows "2 people"
-   - Check "HOST" badge does NOT appear
-
-4. **Sync Test:**
-   - In host window: Click play
-   - In viewer window: Verify video plays
-   - In host window: Click pause
-   - In viewer window: Verify video pauses
-   - In host window: Seek to different time
-   - In viewer window: Verify video seeks
-
-5. **Video Change Test:**
-   - In host window: Paste new YouTube URL
-   - Click "Change"
-   - In viewer window: Verify video changes
-
-### Advanced Testing
-
-#### Test Drift Correction
-
-1. Host plays video for 10 seconds
-2. Viewer manually seeks to different time
-3. Wait 2 seconds
-4. Viewer should auto-correct to host's time
-
-**Check console:** Should see "Drift detected: X.XXs - Correcting..."
-
-#### Test Disconnection
-
-1. Stop backend server (`Ctrl+C`)
-2. Check connection indicator turns red
-3. Restart backend server
-4. Should automatically reconnect (green)
-
-#### Test Multiple Users
-
-1. Open 3-4 browser windows
-2. All join same room
-3. Verify user count updates
-4. Host controls should sync to all
-
----
-
-## 🐛 Troubleshooting
-
-### Issue: npm install fails
-
-**Error:** `EACCES` or permission errors
-
-**Solution:**
-```bash
-# Fix npm permissions
-sudo chown -R $USER:$(id -gn $USER) ~/.npm
-sudo chown -R $USER:$(id -gn $USER) ~/.config
-```
-
-**Error:** `Cannot find module`
-
-**Solution:**
-```bash
-# Clear cache and reinstall
-rm -rf node_modules package-lock.json
-npm cache clean --force
-npm install
-```
-
-### Issue: Port already in use
-
-**Error:** `EADDRINUSE: address already in use :::4000`
-
-**Solution:**
-```bash
-# Find process using port 4000
-lsof -i :4000
-
-# Kill the process
-kill -9 <PID>
-
-# Or use different port in .env
-PORT=4001
-```
-
-For frontend (port 3000):
-```bash
-lsof -i :3000
-kill -9 <PID>
-```
-
-### Issue: CORS errors
-
-**Error:** `Access-Control-Allow-Origin`
-
-**Solution:**
-1. Check `CLIENT_URL` in backend `.env` matches frontend URL exactly
-2. Restart backend after changing `.env`
-3. Verify no typos (http vs https, trailing slash, etc.)
-
-```bash
-# Backend .env
-CLIENT_URL=http://localhost:3000  # Correct
-CLIENT_URL=http://localhost:3000/ # Wrong (trailing slash)
-CLIENT_URL=localhost:3000         # Wrong (missing protocol)
-```
-
-### Issue: WebSocket connection failed
-
-**Error:** `WebSocket connection failed` in console
-
-**Solution:**
-1. Verify backend is running
-2. Check `NEXT_PUBLIC_SOCKET_URL` in frontend `.env.local`
-3. Test health endpoint: `http://localhost:4000/health`
-4. Check firewall/antivirus isn't blocking
-
-### Issue: YouTube player not loading
-
-**Error:** Player shows black screen
-
-**Solution:**
 1. Check browser console for errors
-2. Verify YouTube IFrame API loaded (check Network tab)
-3. Try different video ID
-4. Check internet connection
-5. Disable browser extensions (AdBlock can interfere)
+2. Check server logs for API errors
+3. Verify your SoundCloud app is active in the [developer portal](https://soundcloud.com/you/apps)
+4. Try searching for a common term like "music" or "remix"
 
-### Issue: Videos not syncing
+### Cannot connect to room
 
-**Symptoms:** Play/pause doesn't sync between windows
+1. Make sure both server and client are running
+2. Check that `NEXT_PUBLIC_SOCKET_URL` in client `.env.local` matches your server URL
+3. Check browser console for WebSocket errors
 
-**Debug steps:**
-1. Open browser console in both windows
-2. Play video in host window
-3. Check console for `Emitting play event`
-4. Check viewer console for receiving play event
-5. Verify both connected (green indicator)
+## Production Deployment
 
-**Common causes:**
-- Backend not running
-- Wrong `NEXT_PUBLIC_SOCKET_URL`
-- Firewall blocking WebSocket
-- Browser cache (try hard refresh: Ctrl+Shift+R)
+For production deployment:
 
-### Issue: Build errors
+1. Update `CLIENT_URL` in server `.env` to your production domain
+2. Update `NEXT_PUBLIC_SOCKET_URL` in client `.env.local` to your production server
+3. Use environment variables on your hosting platform for credentials
+4. Enable HTTPS for secure WebSocket connections
 
-**Error:** TypeScript errors during build
+## Support
 
-**Solution:**
-```bash
-# Update TypeScript and dependencies
-npm update
+- SoundCloud API Docs: https://developers.soundcloud.com/docs/api/guide
+- Socket.io Docs: https://socket.io/docs/
+- Next.js Docs: https://nextjs.org/docs
 
-# If still fails, delete and reinstall
-rm -rf node_modules package-lock.json
-npm install
-```
+## Security Notes
 
----
+- Never expose your `SOUNDCLOUD_CLIENT_SECRET` to the client
+- All API requests go through the server proxy
+- App-level tokens are cached server-side and automatically refreshed
+- User authentication uses OAuth 2.1 with PKCE for security
+- User tokens are stored client-side in localStorage
+- The app falls back to app-level authentication if user is not logged in
 
-## 🔄 Common Development Tasks
+## OAuth Authentication Flow
 
-### Restart Everything
+This app supports **two modes of authentication**:
 
-```bash
-# Stop both servers (Ctrl+C in each terminal)
+1. **App-level** (default): Uses Client Credentials flow
+   - Works without user login
+   - Limited to public tracks
+   - Tokens managed server-side
 
-# Backend
-cd server
-npm run dev
+2. **User-level** (optional): Uses Authorization Code flow with PKCE
+   - Click "Connect with SoundCloud" to sign in
+   - Access to user's private tracks and playlists
+   - More personalized search results
+   - Tokens stored client-side
 
-# Frontend (new terminal)
-cd client
-npm run dev
-```
+The app seamlessly switches between modes - if a user is logged in, their token is used; otherwise, the app token is used.
 
-### Clear Cache and Restart
-
-```bash
-# Backend
-cd server
-rm -rf node_modules package-lock.json
-npm install
-npm run dev
-
-# Frontend
-cd client
-rm -rf node_modules package-lock.json .next
-npm install
-npm run dev
-```
-
-### Update Dependencies
-
-```bash
-# Backend
-cd server
-npm update
-npm audit fix
-
-# Frontend
-cd client
-npm update
-npm audit fix
-```
-
-### View Logs
-
-Backend logs appear in terminal automatically.
-
-Frontend logs:
-- Server logs: Terminal
-- Client logs: Browser console (F12)
-
----
-
-## 💡 Development Tips
-
-### Hot Reload
-
-Both backend and frontend support hot reload:
-- **Backend:** Uses `nodemon` - saves trigger reload
-- **Frontend:** Next.js Fast Refresh - instant updates
-
-### Browser DevTools
-
-Press `F12` for developer tools:
-- **Console:** See logs and errors
-- **Network:** Check WebSocket connection
-- **Application:** View local storage
-
-### Useful Console Commands
-
-In browser console:
-```javascript
-// Check socket connection
-socket.connected
-
-// Get current room
-window.location.pathname
-
-// Force reconnect
-socket.disconnect()
-socket.connect()
-```
-
-### Code Formatting
-
-Recommended VS Code extensions:
-- ESLint
-- Prettier
-- Tailwind CSS IntelliSense
-
-### Multiple Test Windows
-
-For testing sync:
-1. Normal window (host)
-2. Incognito window (viewer 1)
-3. Different browser (viewer 2)
-4. Mobile browser (viewer 3)
-
----
-
-## 📚 Next Steps
-
-Now that setup is complete:
-
-1. ✅ **Read [README.md](README.md)** - Understand architecture
-2. ✅ **Read [DEPLOYMENT.md](DEPLOYMENT.md)** - Deploy to production
-3. ✅ **Explore the code** - Understand how it works
-4. ✅ **Customize** - Add your own features!
-
----
-
-## 🎓 Learning Resources
-
-### Key Technologies
-
-- [Next.js Docs](https://nextjs.org/docs)
-- [Socket.io Docs](https://socket.io/docs)
-- [YouTube IFrame API](https://developers.google.com/youtube/iframe_api_reference)
-- [Tailwind CSS](https://tailwindcss.com/docs)
-
-### Code Files to Study
-
-1. **Backend:** `server/index.js` - WebSocket logic
-2. **Frontend:** `client/pages/room/[roomId].tsx` - Sync logic
-3. **Player:** `client/components/YouTubePlayer.tsx` - YouTube integration
-
----
-
-## ❓ Need Help?
-
-1. Check this guide
-2. Check browser console
-3. Check terminal logs
-4. Review the troubleshooting section
-5. Check README.md
-
----
-
-**✨ Happy coding! You're all set to develop and customize YouTube Sync!**
+Enjoy your synchronized music experience! 🎵

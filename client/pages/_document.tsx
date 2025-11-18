@@ -4,8 +4,8 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
-        {/* Load YouTube IFrame API */}
-        <script src="https://www.youtube.com/iframe_api" async></script>
+        {/* Load SoundCloud Widget API */}
+        <script src="https://w.soundcloud.com/player/api.js" async></script>
       </Head>
       <body>
         <Main />
