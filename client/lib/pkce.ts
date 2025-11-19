@@ -34,7 +34,7 @@ export function generateState(): string {
  * Base64 URL encode (without padding)
  */
 function base64URLEncode(buffer: Uint8Array): string {
-  const base64 = btoa(String.fromCharCode(...buffer));
+  const base64 = btoa(String.fromCharCode.apply(null, Array.from(buffer)));
   return base64
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
