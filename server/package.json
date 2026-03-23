@@ -7,13 +7,19 @@
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
-  "keywords": ["soundcloud", "sync", "websocket", "socketio"],
+  "keywords": [
+    "soundcloud",
+    "sync",
+    "websocket",
+    "socketio"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.18.2",
     "socket.io": "^4.6.1",
-    "cors": "^2.8.5"
+    "ytmusic-api": "^5.3.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

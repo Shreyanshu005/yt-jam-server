@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const YTMusic = require('ytmusic-api');
 
 const app = express();
 const server = http.createServer(app);
@@ -14,50 +15,68 @@ app.use(cors({
 
 app.use(express.json());
 
-// SoundCloud API token management
-let soundcloudToken = null;
-let tokenExpiry = 0;
+// -----------------------------
+// YouTube Music API (ytmusic-api)
+// -----------------------------
 
-async function getSoundCloudToken() {
-  // Return cached token if still valid
-  if (soundcloudToken && Date.now() < tokenExpiry) {
-    return soundcloudToken;
+let ytmusicClient = null;
+let ytmusicInitPromise = null;
+
+async function getYTMusicClient() {
+  if (ytmusicClient) return ytmusicClient;
+  if (ytmusicInitPromise) return ytmusicInitPromise;
+
+  ytmusicInitPromise = (async () => {
+    const client = new YTMusic();
+    // Optional cookies support (string). If you need auth-restricted content,
+    // set YTMUSIC_COOKIES in server env.
+    const cookies = process.env.YTMUSIC_COOKIES;
+    await client.initialize(cookies);
+    ytmusicClient = client;
+    console.log('✅ YTMusic client initialized');
+    return client;
+  })();
+
+  return ytmusicInitPromise;
+}
+
+function parseDurationToSeconds(duration) {
+  // ytmusic-api sometimes returns null, or a string like "3:45" / "1:02:10"
+  if (!duration) return null;
+  if (typeof duration === 'number' && Number.isFinite(duration)) return duration;
+  if (typeof duration !== 'string') return null;
+
+  const parts = duration.split(':').map((p) => Number(p));
+  if (parts.some((n) => !Number.isFinite(n))) return null;
+  if (parts.length === 2) {
+    const [m, s] = parts;
+    return m * 60 + s;
   }
-
-  const clientId = process.env.SOUNDCLOUD_CLIENT_ID;
-  const clientSecret = process.env.SOUNDCLOUD_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error('SoundCloud credentials not configured');
+  if (parts.length === 3) {
+    const [h, m, s] = parts;
+    return h * 3600 + m * 60 + s;
   }
+  return null;
+}
 
-  try {
-    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+function mapSearchItemToTrack(item) {
+  if (!item || !item.videoId || !item.name) return null;
 
-    const response = await fetch('https://secure.soundcloud.com/oauth/token', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: 'grant_type=client_credentials'
-    });
+  const artistName =
+    item.artist?.name ||
+    item.artists?.[0]?.name ||
+    item.author?.name ||
+    item.author ||
+    'Unknown Artist';
 
-    if (!response.ok) {
-      throw new Error(`Token request failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    soundcloudToken = data.access_token;
-    // Set expiry to 5 minutes before actual expiry for safety
-    tokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
-
-    console.log('✅ SoundCloud token obtained');
-    return soundcloudToken;
-  } catch (error) {
-    console.error('❌ Failed to get SoundCloud token:', error);
-    throw error;
-  }
+  return {
+    videoId: item.videoId,
+    title: item.name,
+    artist: artistName,
+    durationSeconds: parseDurationToSeconds(item.duration),
+    thumbnails: Array.isArray(item.thumbnails) ? item.thumbnails : [],
+    type: item.type || 'UNKNOWN'
+  };
 }
 
 // Socket.io setup with CORS
@@ -70,7 +89,7 @@ const io = new Server(server, {
 });
 
 // In-memory storage for rooms
-// Structure: { roomId: { trackUrl, currentTrack, queue: [], isPlaying, currentTime, host, users: Set } }
+// Structure: { roomId: { videoId, currentTrack, queue: [], isPlaying, currentTime, host, users: Set } }
 const rooms = new Map();
 
 // Health check endpoint
@@ -82,171 +101,90 @@ app.get('/health', (req, res) => {
   });
 });
 
-// SoundCloud API proxy endpoints
-app.get('/api/soundcloud/search', async (req, res) => {
+// -----------------------------
+// YouTube Music proxy endpoints
+// -----------------------------
+
+// Search YouTube Music
+// GET /api/ytmusic/search?q=...&limit=20&filter=songs|videos|all
+app.get('/api/ytmusic/search', async (req, res) => {
   try {
-    const { q, limit = 20 } = req.query;
+    const { q, limit = 20, filter = 'songs' } = req.query;
 
     if (!q) {
       return res.status(400).json({ error: 'Query parameter required' });
     }
 
-    // Try to use user token from header, fallback to app token
-    const userToken = req.headers.authorization?.replace('Bearer ', '');
-    const token = userToken || await getSoundCloudToken();
+    const client = await getYTMusicClient();
 
-    const response = await fetch(
-      `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(q)}&limit=${limit}`,
-      {
-        headers: {
-          'Authorization': `OAuth ${token}`
-        }
-      }
-    );
+    let results;
+    const numericLimit = Math.min(Number(limit) || 20, 50);
 
-    if (!response.ok) {
-      throw new Error(`SoundCloud API error: ${response.status}`);
+    if (filter === 'videos') {
+      results = await client.searchVideos(String(q));
+    } else if (filter === 'all') {
+      results = await client.search(String(q));
+    } else {
+      // default: songs
+      results = await client.searchSongs(String(q));
     }
 
-    const data = await response.json();
-    res.json(data);
+    const mapped = (Array.isArray(results) ? results : [])
+      .map(mapSearchItemToTrack)
+      .filter(Boolean)
+      .slice(0, numericLimit);
+
+    res.json({ collection: mapped });
   } catch (error) {
-    console.error('Search error:', error);
-    res.status(500).json({ error: 'Failed to search tracks' });
+    console.error('YTMusic search error:', error);
+    res.status(500).json({ error: 'Failed to search YouTube Music' });
   }
 });
 
-app.get('/api/soundcloud/resolve', async (req, res) => {
+// Get video details
+// GET /api/ytmusic/video?videoId=...
+app.get('/api/ytmusic/video', async (req, res) => {
   try {
-    const { url } = req.query;
-
-    if (!url) {
-      return res.status(400).json({ error: 'URL parameter required' });
+    const { videoId } = req.query;
+    if (!videoId) {
+      return res.status(400).json({ error: 'videoId parameter required' });
     }
 
-    // Try to use user token from header, fallback to app token
-    const userToken = req.headers.authorization?.replace('Bearer ', '');
-    const token = userToken || await getSoundCloudToken();
+    const client = await getYTMusicClient();
+    const data = await client.getVideo(String(videoId));
 
-    const response = await fetch(
-      `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(url)}`,
-      {
-        headers: {
-          'Authorization': `OAuth ${token}`
-        }
-      }
-    );
+    // Normalize to the same track shape used by the client UI.
+    const mapped = mapSearchItemToTrack({
+      videoId: data?.videoId || String(videoId),
+      name: data?.name || data?.title || 'Unknown Title',
+      artist: { name: data?.artist?.name || data?.author?.name || 'Unknown Artist' },
+      duration: data?.duration,
+      thumbnails: data?.thumbnails,
+      type: data?.type || 'VIDEO'
+    });
 
-    if (!response.ok) {
-      throw new Error(`SoundCloud API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    res.json(data);
+    res.json(mapped || { videoId: String(videoId) });
   } catch (error) {
-    console.error('Resolve error:', error);
-    res.status(500).json({ error: 'Failed to resolve track' });
+    console.error('YTMusic getVideo error:', error);
+    res.status(500).json({ error: 'Failed to get video details' });
   }
 });
 
-app.get('/api/soundcloud/charts', async (req, res) => {
+// Get search suggestions
+// GET /api/ytmusic/suggestions?q=...
+app.get('/api/ytmusic/suggestions', async (req, res) => {
   try {
-    const { genre, limit = 20 } = req.query;
-
-    // Try to use user token from header, fallback to app token
-    const userToken = req.headers.authorization?.replace('Bearer ', '');
-    const token = userToken || await getSoundCloudToken();
-
-    let url = `https://api-v2.soundcloud.com/charts?kind=top&limit=${limit}`;
-    if (genre) {
-      url += `&genre=${encodeURIComponent(genre)}`;
+    const { q } = req.query;
+    if (!q) {
+      return res.status(400).json({ error: 'Query parameter required' });
     }
 
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `OAuth ${token}`
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`SoundCloud API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    res.json(data);
+    const client = await getYTMusicClient();
+    const suggestions = await client.getSearchSuggestions(String(q));
+    res.json({ suggestions: Array.isArray(suggestions) ? suggestions : [] });
   } catch (error) {
-    console.error('Charts error:', error);
-    res.status(500).json({ error: 'Failed to get charts' });
-  }
-});
-
-// OAuth callback endpoint - exchange code for tokens
-app.post('/api/auth/callback', async (req, res) => {
-  try {
-    const { code, code_verifier } = req.body;
-
-    if (!code || !code_verifier) {
-      return res.status(400).json({ error: 'Missing code or code_verifier' });
-    }
-
-    const clientId = process.env.SOUNDCLOUD_CLIENT_ID;
-    const clientSecret = process.env.SOUNDCLOUD_CLIENT_SECRET;
-    const redirectUri = process.env.REDIRECT_URI || 'http://localhost:3000/callback';
-
-    if (!clientId || !clientSecret) {
-      return res.status(500).json({ error: 'Server not configured' });
-    }
-
-    // Exchange authorization code for access token
-    const tokenResponse = await fetch('https://secure.soundcloud.com/oauth/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
-        code: code,
-        code_verifier: code_verifier,
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.text();
-      console.error('Token exchange failed:', errorData);
-      return res.status(tokenResponse.status).json({ error: 'Token exchange failed' });
-    }
-
-    const tokenData = await tokenResponse.json();
-
-    // Get user info
-    const userResponse = await fetch('https://api.soundcloud.com/me', {
-      headers: {
-        'Authorization': `OAuth ${tokenData.access_token}`,
-      },
-    });
-
-    if (!userResponse.ok) {
-      return res.status(500).json({ error: 'Failed to fetch user info' });
-    }
-
-    const userData = await userResponse.json();
-
-    res.json({
-      access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
-      expires_in: tokenData.expires_in,
-      user: {
-        id: userData.id,
-        username: userData.username,
-        avatar_url: userData.avatar_url,
-      },
-    });
-  } catch (error) {
-    console.error('OAuth callback error:', error);
-    res.status(500).json({ error: 'Authentication failed' });
+    console.error('YTMusic suggestions error:', error);
+    res.status(500).json({ error: 'Failed to get suggestions' });
   }
 });
 
@@ -261,7 +199,7 @@ app.get('/api/room/:roomId', (req, res) => {
 
   res.json({
     roomId,
-    trackUrl: room.trackUrl,
+    videoId: room.videoId,
     isPlaying: room.isPlaying,
     currentTime: room.currentTime,
     userCount: room.users.size
@@ -273,11 +211,12 @@ io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
   // Create or join a room
-  socket.on('join-room', ({ roomId, trackUrl = 'https://soundcloud.com/21savage/a-lot-feat-j-cole', videoId }) => {
-    console.log(`User ${socket.id} joining room: ${roomId}`);
+  socket.on('join-room', ({ roomId, videoId, username }) => {
+    console.log(`User ${socket.id} (${username || 'Anonymous'}) joining room: ${roomId}`);
 
-    // Support backward compatibility - if videoId is provided instead of trackUrl
-    const finalTrackUrl = trackUrl || videoId || 'https://soundcloud.com/21savage/a-lot-feat-j-cole';
+    // Default video ID if none provided (Rick Astley - Never Gonna Give You Up)
+    const finalVideoId = videoId || 'lYBUbBu4W08';
+    const userName = username || 'Anonymous';
 
     // Leave any previous rooms
     const previousRooms = Array.from(socket.rooms).filter(r => r !== socket.id);
@@ -286,8 +225,13 @@ io.on('connection', (socket) => {
       const roomData = rooms.get(room);
       if (roomData) {
         roomData.users.delete(socket.id);
+        roomData.userNames.delete(socket.id);
         // Notify others in the room
-        io.to(room).emit('user-count', { count: roomData.users.size });
+        const usersList = Array.from(roomData.users).map(id => ({
+          id,
+          name: roomData.userNames.get(id) || 'Anonymous'
+        }));
+        io.to(room).emit('user-count', { count: roomData.users.size, users: usersList });
 
         // Clean up empty rooms
         if (roomData.users.size === 0) {
@@ -302,39 +246,47 @@ io.on('connection', (socket) => {
     // Initialize room if it doesn't exist
     if (!rooms.has(roomId)) {
       rooms.set(roomId, {
-        trackUrl: finalTrackUrl,
+        videoId: finalVideoId,
         currentTrack: null,
         queue: [],
         isPlaying: false,
         currentTime: 0,
         host: socket.id,
         users: new Set([socket.id]),
+        userNames: new Map([[socket.id, userName]]),
         lastUpdate: Date.now()
       });
       console.log(`Room ${roomId} created by ${socket.id}`);
     } else {
       const room = rooms.get(roomId);
       room.users.add(socket.id);
+      room.userNames.set(socket.id, userName);
     }
 
     const room = rooms.get(roomId);
 
+    // Build users list with names
+    const usersList = Array.from(room.users).map(id => ({
+      id,
+      name: room.userNames.get(id) || 'Anonymous'
+    }));
+
     // Send current room state to the joining user
     socket.emit('room-state', {
       roomId,
-      trackUrl: room.trackUrl,
+      videoId: room.videoId,
       currentTrack: room.currentTrack,
       queue: room.queue,
-      videoId: room.trackUrl, // Backward compatibility
       isPlaying: room.isPlaying,
       currentTime: room.currentTime,
       isHost: room.host === socket.id,
       userCount: room.users.size,
-      timestamp: Date.now() // Add timestamp for sync calculation
+      users: usersList,
+      timestamp: Date.now()
     });
 
-    // Notify all users in the room about the new user count
-    io.to(roomId).emit('user-count', { count: room.users.size });
+    // Notify all users in the room about the new user count and users list
+    io.to(roomId).emit('user-count', { count: room.users.size, users: usersList });
 
     console.log(`Room ${roomId} now has ${room.users.size} users`);
   });
@@ -384,36 +336,21 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('seek', { time, isPlaying: room.isPlaying });
   });
 
-  // Handle track change (anyone can change)
-  socket.on('change-track', ({ roomId, trackUrl }) => {
+  // Handle video change
+  socket.on('change-video', ({ roomId, videoId, track }) => {
     const room = rooms.get(roomId);
     if (!room) return;
 
-    room.trackUrl = trackUrl;
+    room.videoId = videoId;
+    room.currentTrack = track || null;
     room.currentTime = 0;
     room.isPlaying = false;
     room.lastUpdate = Date.now();
 
-    console.log(`Room ${roomId}: Track changed to ${trackUrl} by ${socket.id}`);
+    console.log(`Room ${roomId}: Video changed to ${videoId} by ${socket.id}`);
 
     // Broadcast to ALL users in the room including sender for consistency
-    io.to(roomId).emit('track-changed', { trackUrl });
-  });
-
-  // Handle video change (backward compatibility)
-  socket.on('change-video', ({ roomId, videoId }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
-
-    room.trackUrl = videoId;
-    room.currentTime = 0;
-    room.isPlaying = false;
-    room.lastUpdate = Date.now();
-
-    console.log(`Room ${roomId}: Track changed to ${videoId} by ${socket.id} (via change-video)`);
-
-    // Broadcast to ALL users in the room including sender for consistency
-    io.to(roomId).emit('video-changed', { videoId, trackUrl: videoId });
+    io.to(roomId).emit('video-changed', { videoId, track });
   });
 
   // Handle time sync (for drift correction)
@@ -479,18 +416,15 @@ io.on('connection', (socket) => {
     if (index >= 0 && index < room.queue.length) {
       const track = room.queue[index];
       room.currentTrack = track;
-      room.trackUrl = track.permalink_url;
+      room.videoId = track.videoId;
       room.currentTime = 0;
       room.isPlaying = true;
       room.lastUpdate = Date.now();
 
       console.log(`Room ${roomId}: Playing track from queue at index ${index}`);
 
-      // Broadcast track change to all users
-      io.to(roomId).emit('track-changed', {
-        trackUrl: track.permalink_url,
-        track: track
-      });
+      // Broadcast video change to all users
+      io.to(roomId).emit('video-changed', { videoId: track.videoId, track });
     }
   });
 
@@ -501,18 +435,15 @@ io.on('connection', (socket) => {
     // Play first track from queue and remove it
     const track = room.queue.shift();
     room.currentTrack = track;
-    room.trackUrl = track.permalink_url;
+    room.videoId = track.videoId;
     room.currentTime = 0;
     room.isPlaying = true;
     room.lastUpdate = Date.now();
 
     console.log(`Room ${roomId}: Playing next track from queue`);
 
-    // Broadcast track change and queue update to all users
-    io.to(roomId).emit('track-changed', {
-      trackUrl: track.permalink_url,
-      track: track
-    });
+    // Broadcast video change and queue update to all users
+    io.to(roomId).emit('video-changed', { videoId: track.videoId, track });
     io.to(roomId).emit('queue-updated', { queue: room.queue });
   });
 
@@ -521,7 +452,7 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     room.currentTrack = track;
-    room.trackUrl = track.permalink_url;
+    room.videoId = track.videoId;
     console.log(`Room ${roomId}: Current track updated`);
 
     // Broadcast to all users
@@ -536,6 +467,7 @@ io.on('connection', (socket) => {
     rooms.forEach((room, roomId) => {
       if (room.users.has(socket.id)) {
         room.users.delete(socket.id);
+        room.userNames.delete(socket.id);
 
         // If host disconnected, assign new host
         if (room.host === socket.id && room.users.size > 0) {
@@ -545,8 +477,12 @@ io.on('connection', (socket) => {
           console.log(`Room ${roomId}: New host assigned - ${newHost}`);
         }
 
-        // Notify remaining users
-        io.to(roomId).emit('user-count', { count: room.users.size });
+        // Build users list with names
+        const usersList = Array.from(room.users).map(id => ({
+          id,
+          name: room.userNames.get(id) || 'Anonymous'
+        }));
+        io.to(roomId).emit('user-count', { count: room.users.size, users: usersList });
 
         // Clean up empty rooms
         if (room.users.size === 0) {
@@ -582,6 +518,7 @@ io.on('connection', (socket) => {
     if (room && room.users.has(socket.id)) {
       socket.leave(roomId);
       room.users.delete(socket.id);
+      room.userNames.delete(socket.id);
 
       // If host left, assign new host
       if (room.host === socket.id && room.users.size > 0) {
@@ -590,7 +527,12 @@ io.on('connection', (socket) => {
         io.to(newHost).emit('host-assigned');
       }
 
-      io.to(roomId).emit('user-count', { count: room.users.size });
+      // Build users list with names
+      const usersList = Array.from(room.users).map(id => ({
+        id,
+        name: room.userNames.get(id) || 'Anonymous'
+      }));
+      io.to(roomId).emit('user-count', { count: room.users.size, users: usersList });
 
       // Clean up empty rooms
       if (room.users.size === 0) {

@@ -1,13 +1,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/router';
-import SoundCloudPlayer from '@/components/SoundCloudPlayer';
+import YouTubePlayer, { YouTubePlayerRef } from '@/components/YouTubePlayer';
 import TrackSearch from '@/components/TrackSearch';
 import QueuePanel from '@/components/QueuePanel';
 import PlayerControls from '@/components/PlayerControls';
 import Chat from '@/components/Chat';
+import Toast, { ToastMessage } from '@/components/Toast';
 import { getSocket } from '@/lib/socket';
-import { extractTrackUrl } from '@/lib/soundcloud';
-import { SoundCloudTrack } from '@/lib/soundcloudAPI';
+import { YTTrack } from '@/lib/ytmusicAPI';
 
 interface Message {
   id: string;
@@ -19,11 +19,11 @@ interface Message {
 
 export default function RoomPage() {
   const router = useRouter();
-  const { roomId, trackUrl: queryTrackUrl } = router.query;
+  const { roomId, videoId: queryVideoId } = router.query;
 
-  const [trackUrl, setTrackUrl] = useState<string>('https://soundcloud.com/21savage/a-lot-feat-j-cole');
-  const [currentTrack, setCurrentTrack] = useState<SoundCloudTrack | null>(null);
-  const [queue, setQueue] = useState<SoundCloudTrack[]>([]);
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [currentTrack, setCurrentTrack] = useState<YTTrack | null>(null);
+  const [queue, setQueue] = useState<YTTrack[]>([]);
   const [isHost, setIsHost] = useState<boolean>(false);
   const [userCount, setUserCount] = useState<number>(1);
   const [isConnected, setIsConnected] = useState<boolean>(false);
@@ -34,14 +34,31 @@ export default function RoomPage() {
   const [username, setUsername] = useState<string>('');
   const [userId, setUserId] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+  const [showNamePrompt, setShowNamePrompt] = useState<boolean>(false);
+  const [nameInput, setNameInput] = useState<string>('');
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const playerRef = useRef<any>(null);
+  const playerRef = useRef<YouTubePlayerRef | null>(null);
   const socketRef = useRef<any>(null);
   const ignoreNextStateChange = useRef<boolean>(false);
   const lastSyncTime = useRef<number>(0);
   const lastKnownTime = useRef<number>(0);
   const seekDetectionInterval = useRef<any>(null);
   const justJoinedRoom = useRef<boolean>(false);
+  const prevMessagesLengthRef = useRef<number>(0);
+
+  // Toast helpers
+  const addToast = useCallback((title: string, message: string, type: 'info' | 'success' | 'error' = 'info') => {
+    const id = Date.now().toString();
+    setToasts((prev) => [...prev, { id, title, message, type }]);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   // Sync to room state helper function
   const syncToRoomState = useCallback((data: any) => {
@@ -56,12 +73,10 @@ export default function RoomPage() {
     if (data.isPlaying && data.timestamp) {
       const now = Date.now();
       const elapsed = (now - data.timestamp) / 1000;
-      targetTime = (data.currentTime + elapsed) * 1000;
-    } else {
-      targetTime = targetTime * 1000;
+      targetTime = data.currentTime + elapsed;
     }
 
-    lastKnownTime.current = targetTime / 1000;
+    lastKnownTime.current = targetTime;
     playerRef.current.seekTo(targetTime);
 
     if (data.isPlaying) {
@@ -83,33 +98,36 @@ export default function RoomPage() {
     }, 1500);
   }, []);
 
-  // Initialize socket connection
+  // Check for stored username on mount
   useEffect(() => {
     if (!roomId) return;
+    
+    const storedUsername = localStorage.getItem('ytjam_username');
+    if (storedUsername) {
+      setUsername(storedUsername);
+    } else {
+      setShowNamePrompt(true);
+    }
+  }, [roomId]);
+
+  // Initialize socket connection when username is available
+  useEffect(() => {
+    if (!roomId || !username) return;
 
     const socket = getSocket();
     socketRef.current = socket;
 
-    const initialTrackUrl = (queryTrackUrl as string) || trackUrl;
-    if (queryTrackUrl) {
-      setTrackUrl(queryTrackUrl as string);
-    }
+    const initialVideoId = (queryVideoId as string) || null;
 
     if (socket.connected) {
       setIsConnected(true);
-      socket.emit('join-room', { roomId, trackUrl: initialTrackUrl });
+      socket.emit('join-room', { roomId, videoId: initialVideoId, username });
     }
 
     socket.on('connect', () => {
       setIsConnected(true);
       setUserId(socket.id || '');
-
-      if (!username) {
-        const randomName = `User${Math.floor(Math.random() * 1000)}`;
-        setUsername(randomName);
-      }
-
-      socket.emit('join-room', { roomId, trackUrl: initialTrackUrl });
+      socket.emit('join-room', { roomId, videoId: initialVideoId, username });
     });
 
     socket.on('disconnect', () => {
@@ -125,8 +143,8 @@ export default function RoomPage() {
     socket.on('room-state', (data: any) => {
       console.log('Room state received:', data);
       clearTimeout(loadingTimeout);
-      setTrackUrl(data.trackUrl || data.videoId);
-      setCurrentTrack(data.currentTrack);
+      setVideoId(data.videoId || null);
+      setCurrentTrack(data.currentTrack || null);
       setQueue(data.queue || []);
       setIsHost(data.isHost);
       setUserCount(data.userCount);
@@ -146,6 +164,9 @@ export default function RoomPage() {
 
     socket.on('user-count', (data: any) => {
       setUserCount(data.count);
+      if (data.users) {
+        setUsers(data.users);
+      }
     });
 
     socket.on('host-assigned', () => {
@@ -157,7 +178,7 @@ export default function RoomPage() {
         ignoreNextStateChange.current = true;
         lastKnownTime.current = data.time;
         lastSyncTime.current = Date.now();
-        playerRef.current.seekTo(data.time * 1000);
+        playerRef.current.seekTo(data.time);
         setTimeout(() => {
           if (playerRef.current) {
             playerRef.current.play();
@@ -175,7 +196,7 @@ export default function RoomPage() {
         ignoreNextStateChange.current = true;
         lastKnownTime.current = data.time;
         lastSyncTime.current = Date.now();
-        playerRef.current.seekTo(data.time * 1000);
+        playerRef.current.seekTo(data.time);
         playerRef.current.pause();
 
         setTimeout(() => {
@@ -189,7 +210,7 @@ export default function RoomPage() {
         ignoreNextStateChange.current = true;
         lastKnownTime.current = data.time;
         lastSyncTime.current = Date.now();
-        playerRef.current.seekTo(data.time * 1000);
+        playerRef.current.seekTo(data.time);
 
         if (data.isPlaying) {
           setTimeout(() => {
@@ -205,27 +226,12 @@ export default function RoomPage() {
       }
     });
 
-    socket.on('track-changed', (data: any) => {
-      console.log('Track changed:', data);
-      setTrackUrl(data.trackUrl);
+    socket.on('video-changed', (data: any) => {
+      console.log('Video changed:', data);
+      setVideoId(data.videoId);
       if (data.track) {
         setCurrentTrack(data.track);
       }
-      setPlayerError(null);
-
-      lastKnownTime.current = 0;
-      lastSyncTime.current = Date.now();
-      ignoreNextStateChange.current = true;
-
-      setTimeout(() => {
-        ignoreNextStateChange.current = false;
-        lastKnownTime.current = 0;
-      }, 2000);
-    });
-
-    socket.on('video-changed', (data: any) => {
-      const url = data.trackUrl || data.videoId;
-      setTrackUrl(url);
       setPlayerError(null);
 
       lastKnownTime.current = 0;
@@ -251,6 +257,10 @@ export default function RoomPage() {
 
     socket.on('new-message', (message: Message) => {
       setMessages((prev) => [...prev, message]);
+      // Show toast notification for messages from others
+      if (message.userId !== socket.id) {
+        addToast(`${message.username}`, message.message, 'info');
+      }
     });
 
     return () => {
@@ -266,9 +276,7 @@ export default function RoomPage() {
       socket.off('play');
       socket.off('pause');
       socket.off('seek');
-      socket.off('track-changed');
       socket.off('video-changed');
-      socket.off('time-update');
       socket.off('queue-updated');
       socket.off('current-track-updated');
       socket.off('new-message');
@@ -277,11 +285,11 @@ export default function RoomPage() {
         socket.emit('leave-room', { roomId });
       }
     };
-  }, [roomId, trackUrl, queryTrackUrl, username, isLoading, syncToRoomState]);
+  }, [roomId, queryVideoId, username, isLoading, syncToRoomState]);
 
   // Player ready callback
-  const handlePlayerReady = useCallback((player: any) => {
-    console.log('SoundCloud Player ready');
+  const handlePlayerReady = useCallback((player: YouTubePlayerRef) => {
+    console.log('YouTube Player ready');
     playerRef.current = player;
 
     if (pendingRoomState) {
@@ -297,35 +305,31 @@ export default function RoomPage() {
       if (!playerRef.current || !socketRef.current || !roomId) return;
 
       try {
-        playerRef.current.getPosition((currentTimeMs: number) => {
-          const currentTime = currentTimeMs / 1000;
-          const timeDiff = Math.abs(currentTime - lastKnownTime.current);
-          const now = Date.now();
+        const currentTime = playerRef.current.getCurrentTime();
+        const timeDiff = Math.abs(currentTime - lastKnownTime.current);
+        const now = Date.now();
 
-          if (timeDiff > 1.5 && !ignoreNextStateChange.current && (now - lastSyncTime.current) > 500) {
-            playerRef.current.isPaused((isPaused: boolean) => {
-              const isCurrentlyPlaying = !isPaused;
+        if (timeDiff > 1.5 && !ignoreNextStateChange.current && (now - lastSyncTime.current) > 500) {
+          const isCurrentlyPlaying = playerRef.current.isPlaying();
 
-              ignoreNextStateChange.current = true;
-              setTimeout(() => {
-                ignoreNextStateChange.current = false;
-              }, 1000);
+          ignoreNextStateChange.current = true;
+          setTimeout(() => {
+            ignoreNextStateChange.current = false;
+          }, 1000);
 
-              if (socketRef.current) {
-                socketRef.current.emit('seek', {
-                  roomId,
-                  time: currentTime,
-                  isPlaying: isCurrentlyPlaying
-                });
-              }
-
-              lastSyncTime.current = now;
-              lastKnownTime.current = currentTime;
+          if (socketRef.current) {
+            socketRef.current.emit('seek', {
+              roomId,
+              time: currentTime,
+              isPlaying: isCurrentlyPlaying
             });
-          } else {
-            lastKnownTime.current = currentTime;
           }
-        });
+
+          lastSyncTime.current = now;
+          lastKnownTime.current = currentTime;
+        } else {
+          lastKnownTime.current = currentTime;
+        }
       } catch (error) {
         // Player might not be fully ready yet
       }
@@ -352,34 +356,47 @@ export default function RoomPage() {
     }
     lastSyncTime.current = now;
 
-    playerRef.current.getPosition((currentTimeMs: number) => {
-      const currentTime = currentTimeMs / 1000;
+    const currentTime = playerRef.current.getCurrentTime();
 
-      if (playing) {
-        socketRef.current.emit('play', { roomId, time: currentTime });
-      } else {
-        socketRef.current.emit('pause', { roomId, time: currentTime });
-      }
-    });
+    if (playing) {
+      socketRef.current.emit('play', { roomId, time: currentTime });
+    } else {
+      socketRef.current.emit('pause', { roomId, time: currentTime });
+    }
   }, [roomId]);
 
   const handlePlayerError = useCallback((error: any) => {
-    const errorMsg = 'Error loading SoundCloud track. Please check the URL and try again.';
+    const errorMsg = 'Error loading YouTube video. Please check the video ID and try again.';
     setPlayerError(errorMsg);
     console.error('Player error:', error);
   }, []);
 
+  // Handle time updates from player
+  const handleTimeUpdate = useCallback((time: number, dur: number) => {
+    setCurrentTime(time);
+    setDuration(dur);
+  }, []);
+
+  // Handle video ended
+  const handleVideoEnded = useCallback(() => {
+    // Auto-play next track from queue
+    if (socketRef.current && roomId && queue.length > 0) {
+      socketRef.current.emit('next-track', { roomId });
+    }
+  }, [roomId, queue.length]);
+
   // Track selection from search
-  const handleTrackSelect = (track: SoundCloudTrack) => {
+  const handleTrackSelect = (track: YTTrack) => {
     if (socketRef.current && roomId) {
       setCurrentTrack(track);
-      socketRef.current.emit('change-track', { roomId, trackUrl: track.permalink_url });
+      setVideoId(track.videoId);
+      socketRef.current.emit('change-video', { roomId, videoId: track.videoId, track });
       socketRef.current.emit('update-current-track', { roomId, track });
     }
   };
 
   // Add track to queue
-  const handleAddToQueue = (track: SoundCloudTrack) => {
+  const handleAddToQueue = (track: YTTrack) => {
     if (socketRef.current && roomId) {
       socketRef.current.emit('add-to-queue', { roomId, track });
     }
@@ -409,13 +426,11 @@ export default function RoomPage() {
   // Player controls
   const handlePlayPause = () => {
     if (playerRef.current) {
-      playerRef.current.isPaused((isPaused: boolean) => {
-        if (isPaused) {
-          playerRef.current.play();
-        } else {
-          playerRef.current.pause();
-        }
-      });
+      if (playerRef.current.isPaused()) {
+        playerRef.current.play();
+      } else {
+        playerRef.current.pause();
+      }
     }
   };
 
@@ -427,6 +442,15 @@ export default function RoomPage() {
 
   const handlePrevious = () => {
     // TODO: Implement previous track logic with history
+  };
+
+  const handleSeek = (time: number) => {
+    if (playerRef.current) {
+      playerRef.current.seekTo(time);
+      if (socketRef.current && roomId) {
+        socketRef.current.emit('seek', { roomId, time });
+      }
+    }
   };
 
   const copyRoomLink = () => {
@@ -448,11 +472,57 @@ export default function RoomPage() {
     }
   };
 
+  const handleNameSubmit = () => {
+    const finalName = nameInput.trim() || `User${Math.floor(Math.random() * 1000)}`;
+    setUsername(finalName);
+    localStorage.setItem('ytjam_username', finalName);
+    setShowNamePrompt(false);
+  };
+
+  // Username prompt modal
+  if (showNamePrompt) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex items-center justify-center">
+        <div className="bg-gray-800 rounded-xl p-8 max-w-md w-full mx-4 border border-gray-700 shadow-2xl">
+          <div className="text-center mb-6">
+            <div className="text-5xl mb-4">🎵</div>
+            <h1 className="text-2xl font-bold text-red-500">Welcome to YT Jam!</h1>
+            <p className="text-gray-400 mt-2">Enter your name to join the room</p>
+          </div>
+          
+          <div className="space-y-4">
+            <input
+              type="text"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleNameSubmit()}
+              placeholder="Your name"
+              maxLength={20}
+              className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+              autoFocus
+            />
+            
+            <button
+              onClick={handleNameSubmit}
+              className="w-full py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-lg font-semibold transition-all transform hover:scale-[1.02]"
+            >
+              Join Room
+            </button>
+          </div>
+          
+          <p className="text-center text-gray-500 text-sm mt-4">
+            Room: {roomId}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!roomId || isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-orange-500 mx-auto"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-red-500 mx-auto"></div>
           <p className="mt-4 text-gray-400">
             {!roomId ? 'Loading room...' : 'Connecting to room...'}
           </p>
@@ -468,7 +538,7 @@ export default function RoomPage() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-orange-500">SoundCloud Sync</h1>
+              <h1 className="text-2xl font-bold text-red-500">🎵 YT Jam</h1>
               <p className="text-sm text-gray-400">Room: {roomId}</p>
             </div>
             <div className="flex items-center gap-4">
@@ -486,7 +556,7 @@ export default function RoomPage() {
                 👥 {userCount} {userCount === 1 ? 'person' : 'people'}
               </div>
               {isHost && (
-                <div className="text-sm bg-orange-600 px-4 py-2 rounded-lg font-semibold">
+                <div className="text-sm bg-red-600 px-4 py-2 rounded-lg font-semibold">
                   HOST
                 </div>
               )}
@@ -501,17 +571,46 @@ export default function RoomPage() {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Left Column - Player and Controls */}
             <div className="lg:col-span-3 space-y-6">
+              {/* Current Track Info */}
+              {currentTrack && (
+                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
+                  <div className="flex items-center gap-4">
+                    {currentTrack.thumbnails && currentTrack.thumbnails.length > 0 && (
+                      <img
+                        src={currentTrack.thumbnails[0].url}
+                        alt={currentTrack.title}
+                        className="w-16 h-16 rounded object-cover"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-lg truncate">{currentTrack.title}</h3>
+                      <p className="text-gray-400 truncate">{currentTrack.artist}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Player */}
-              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
-                <SoundCloudPlayer
-                  trackUrl={trackUrl}
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 ">
+                <YouTubePlayer
+                  videoId={videoId}
                   onReady={handlePlayerReady}
                   onStateChange={handleStateChange}
                   onError={handlePlayerError}
+                  onTimeUpdate={handleTimeUpdate}
+                  onEnded={handleVideoEnded}
+                  autoPlay={true}
+                  showControls={false}
+                  height={100}
                 />
                 {playerError && (
                   <div className="mt-4 bg-red-500/20 border border-red-500 rounded-lg p-4">
                     <p className="text-red-400">⚠️ {playerError}</p>
+                  </div>
+                )}
+                {!videoId && (
+                  <div className="mt-4 bg-gray-700/50 rounded-lg p-4 text-center">
+                    <p className="text-gray-400">🔍 Search and select a track to start playing</p>
                   </div>
                 )}
               </div>
@@ -520,16 +619,19 @@ export default function RoomPage() {
               <PlayerControls
                 currentTrack={currentTrack}
                 isPlaying={isPlaying}
+                currentTime={currentTime}
+                duration={duration}
                 onPlayPause={handlePlayPause}
                 onNext={handleNext}
                 onPrevious={handlePrevious}
+                onSeek={handleSeek}
                 hasNext={queue.length > 0}
                 hasPrevious={false}
               />
 
               {/* Search */}
               <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
-                <h2 className="text-xl font-semibold mb-4">Search Tracks</h2>
+                <h2 className="text-xl font-semibold mb-4">Search YouTube Music</h2>
                 <TrackSearch
                   onTrackSelect={handleTrackSelect}
                   onAddToQueue={handleAddToQueue}
@@ -610,6 +712,10 @@ export default function RoomPage() {
           </div>
         </div>
       </main>
+
+      {/* Toast Notifications */}
+      <Toast toasts={toasts} removeToast={removeToast} />
     </div>
   );
 }
+

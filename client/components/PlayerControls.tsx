@@ -1,11 +1,15 @@
-import { SoundCloudTrack, getArtworkUrl } from '@/lib/soundcloudAPI';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { YTTrack, getThumbnailUrl, formatDuration } from '@/lib/ytmusicAPI';
 
 interface PlayerControlsProps {
-  currentTrack: SoundCloudTrack | null;
+  currentTrack: YTTrack | null;
   isPlaying: boolean;
+  currentTime: number;
+  duration: number;
   onPlayPause: () => void;
   onNext: () => void;
   onPrevious: () => void;
+  onSeek: (time: number) => void;
   hasNext: boolean;
   hasPrevious: boolean;
 }
@@ -13,27 +17,82 @@ interface PlayerControlsProps {
 const PlayerControls: React.FC<PlayerControlsProps> = ({
   currentTrack,
   isPlaying,
+  currentTime,
+  duration,
   onPlayPause,
   onNext,
   onPrevious,
+  onSeek,
   hasNext,
   hasPrevious,
 }) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragTime, setDragTime] = useState(0);
+  const progressRef = useRef<HTMLDivElement>(null);
+
+  const progress = duration > 0 ? (isDragging ? dragTime / duration : currentTime / duration) * 100 : 0;
+
+  const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressRef.current || duration === 0) return;
+    
+    const rect = progressRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    const newTime = percentage * duration;
+    onSeek(newTime);
+  }, [duration, onSeek]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressRef.current || duration === 0) return;
+    
+    setIsDragging(true);
+    const rect = progressRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    setDragTime(percentage * duration);
+  }, [duration]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!isDragging || !progressRef.current || duration === 0) return;
+    
+    const rect = progressRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    setDragTime(percentage * duration);
+  }, [isDragging, duration]);
+
+  const handleMouseUp = useCallback(() => {
+    if (isDragging) {
+      onSeek(dragTime);
+      setIsDragging(false);
+    }
+  }, [isDragging, dragTime, onSeek]);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  const displayTime = isDragging ? dragTime : currentTime;
+
   return (
     <div className="bg-gray-800/70 backdrop-blur-sm rounded-xl p-4 border border-gray-700">
       {/* Current Track Info */}
       {currentTrack && (
         <div className="flex items-center gap-4 mb-4">
-          {/* Artwork */}
+          {/* Thumbnail */}
           <div className="w-16 h-16 bg-gray-900 rounded-lg flex-shrink-0 overflow-hidden shadow-lg">
-            {currentTrack.artwork_url || currentTrack.user.avatar_url ? (
+            {currentTrack.thumbnails && currentTrack.thumbnails.length > 0 ? (
               <img
-                src={getArtworkUrl(currentTrack, 'medium')}
+                src={getThumbnailUrl(currentTrack, 'medium')}
                 alt={currentTrack.title}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.src = currentTrack.user.avatar_url || '';
-                }}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
@@ -47,12 +106,42 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
           {/* Track Details */}
           <div className="flex-1 min-w-0">
             <h3 className="text-white font-semibold truncate">{currentTrack.title}</h3>
-            <p className="text-gray-400 text-sm truncate">{currentTrack.user.username}</p>
-            {currentTrack.genre && (
+            <p className="text-gray-400 text-sm truncate">{currentTrack.artist}</p>
+            {currentTrack.type && (
               <p className="text-gray-500 text-xs mt-1">
-                <span className="bg-gray-700 px-2 py-0.5 rounded-full">{currentTrack.genre}</span>
+                <span className="bg-gray-700 px-2 py-0.5 rounded-full">{currentTrack.type}</span>
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Seek Bar */}
+      {currentTrack && (
+        <div className="mb-4">
+          <div
+            ref={progressRef}
+            className="h-2 bg-gray-700 rounded-full cursor-pointer group relative"
+            onClick={handleProgressClick}
+            onMouseDown={handleMouseDown}
+          >
+            {/* Progress Fill */}
+            <div
+              className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all group-hover:from-red-400 group-hover:to-red-500"
+              style={{ width: `${progress}%` }}
+            />
+            
+            {/* Drag Handle */}
+            <div
+              className="absolute top-1/2 transform -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ left: `calc(${progress}% - 8px)` }}
+            />
+          </div>
+          
+          {/* Time Display */}
+          <div className="flex justify-between mt-2 text-xs text-gray-400">
+            <span>{formatDuration(Math.floor(displayTime))}</span>
+            <span>{formatDuration(Math.floor(duration))}</span>
           </div>
         </div>
       )}
@@ -74,7 +163,7 @@ const PlayerControls: React.FC<PlayerControlsProps> = ({
         {/* Play/Pause Button */}
         <button
           onClick={onPlayPause}
-          className="p-4 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all"
+          className="p-4 rounded-full bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all"
           title={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (

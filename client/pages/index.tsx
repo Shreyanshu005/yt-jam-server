@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
-import { extractTrackUrl } from '@/lib/soundcloud';
-import SoundCloudLogin from '@/components/SoundCloudLogin';
 
 export default function Home() {
   const router = useRouter();
   const [roomId, setRoomId] = useState<string>('');
-  const [trackUrl, setTrackUrl] = useState<string>('');
+  const [videoId, setVideoId] = useState<string>('');
   const [isCreating, setIsCreating] = useState<boolean>(false);
 
   const generateRoomId = (): string => {
@@ -17,17 +15,12 @@ export default function Home() {
     setIsCreating(true);
     const newRoomId = generateRoomId();
 
-    // Extract track URL if provided, otherwise use default
-    let finalTrackUrl = 'https://soundcloud.com/21savage/a-lot-feat-j-cole'; // Default track
-    if (trackUrl.trim()) {
-      const extractedUrl = extractTrackUrl(trackUrl.trim());
-      if (extractedUrl) {
-        finalTrackUrl = extractedUrl;
-      }
+    // If video ID is provided, pass it as query param
+    if (videoId.trim()) {
+      router.push(`/room/${newRoomId}?videoId=${encodeURIComponent(videoId.trim())}`);
+    } else {
+      router.push(`/room/${newRoomId}`);
     }
-
-    // Navigate to room with track URL as query param
-    router.push(`/room/${newRoomId}?trackUrl=${encodeURIComponent(finalTrackUrl)}`);
   };
 
   const handleJoinRoom = () => {
@@ -55,21 +48,14 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white">
-      {/* Header with Login */}
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex justify-end">
-          <SoundCloudLogin />
-        </div>
-      </div>
-
       {/* Hero Section */}
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto text-center mb-16">
-          <h1 className="text-6xl font-bold mb-6 bg-gradient-to-r from-orange-500 to-amber-500 bg-clip-text text-transparent">
-            SoundCloud Sync
+          <h1 className="text-6xl font-bold mb-6 bg-gradient-to-r from-red-500 to-red-600 bg-clip-text text-transparent">
+            🎵 YT Jam
           </h1>
           <p className="text-xl text-gray-400 mb-4">
-            Listen to SoundCloud tracks together in perfect sync
+            Listen to YouTube Music together in perfect sync
           </p>
           <p className="text-gray-500">
             Create a room, share the link, and enjoy synchronized playback with friends
@@ -81,9 +67,9 @@ export default function Home() {
           {/* Create Room */}
           <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-8 border border-gray-700 space-y-6">
             <div className="text-center">
-              <div className="w-16 h-16 bg-orange-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-red-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg
-                  className="w-8 h-8 text-orange-500"
+                  className="w-8 h-8 text-red-500"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -104,14 +90,14 @@ export default function Home() {
 
             <div>
               <label className="block text-sm text-gray-400 mb-2">
-                SoundCloud Track URL (optional)
+                YouTube Video ID (optional)
               </label>
               <input
                 type="text"
-                value={trackUrl}
-                onChange={(e) => setTrackUrl(e.target.value)}
-                placeholder="https://soundcloud.com/artist/track"
-                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                value={videoId}
+                onChange={(e) => setVideoId(e.target.value)}
+                placeholder="dQw4w9WgXcQ"
+                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500"
                 onKeyPress={(e) => {
                   if (e.key === 'Enter') {
                     handleCreateRoom();
@@ -119,14 +105,14 @@ export default function Home() {
                 }}
               />
               <p className="text-xs text-gray-500 mt-2">
-                💡 Leave empty to start with a default track. You can change it in the room!
+                💡 Leave empty to start without a track. You can search and select one in the room!
               </p>
             </div>
 
             <button
               onClick={handleCreateRoom}
               disabled={isCreating}
-              className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-700 px-6 py-3 rounded-lg font-semibold transition-colors"
+              className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-700 px-6 py-3 rounded-lg font-semibold transition-colors"
             >
               {isCreating ? 'Creating...' : 'Create Room'}
             </button>
@@ -211,23 +197,23 @@ export default function Home() {
               <div className="text-4xl mb-4">👥</div>
               <h4 className="text-lg font-semibold mb-2">Multi-user</h4>
               <p className="text-sm text-gray-400">
-                Watch with unlimited friends - no account or login required
+                Listen with unlimited friends - no account or login required
               </p>
             </div>
 
             <div className="bg-gray-800/30 rounded-xl p-6 border border-gray-700">
               <div className="text-4xl mb-4">🎬</div>
-              <h4 className="text-lg font-semibold mb-2">Host Controls</h4>
+              <h4 className="text-lg font-semibold mb-2">Queue System</h4>
               <p className="text-sm text-gray-400">
-                Room creator can change videos and control playback
+                Add songs to queue and let them play automatically
               </p>
             </div>
 
             <div className="bg-gray-800/30 rounded-xl p-6 border border-gray-700">
-              <div className="text-4xl mb-4">🔗</div>
-              <h4 className="text-lg font-semibold mb-2">Easy Sharing</h4>
+              <div className="text-4xl mb-4">🔍</div>
+              <h4 className="text-lg font-semibold mb-2">YouTube Music Search</h4>
               <p className="text-sm text-gray-400">
-                Share room link with friends - they join instantly
+                Search millions of songs directly from YouTube Music
               </p>
             </div>
 
@@ -246,19 +232,19 @@ export default function Home() {
           <h3 className="text-2xl font-bold text-center mb-8">How It Works</h3>
           <div className="space-y-4">
             <div className="flex gap-4 items-start">
-              <div className="flex-shrink-0 w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center font-bold">
+              <div className="flex-shrink-0 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center font-bold">
                 1
               </div>
               <div>
                 <h4 className="font-semibold mb-1">Create a Room</h4>
                 <p className="text-sm text-gray-400">
-                  Click "Create Room" and optionally paste a SoundCloud URL
+                  Click "Create Room" to start a new listening session
                 </p>
               </div>
             </div>
 
             <div className="flex gap-4 items-start">
-              <div className="flex-shrink-0 w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center font-bold">
+              <div className="flex-shrink-0 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center font-bold">
                 2
               </div>
               <div>
@@ -270,8 +256,20 @@ export default function Home() {
             </div>
 
             <div className="flex gap-4 items-start">
-              <div className="flex-shrink-0 w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center font-bold">
+              <div className="flex-shrink-0 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center font-bold">
                 3
+              </div>
+              <div>
+                <h4 className="font-semibold mb-1">Search & Play</h4>
+                <p className="text-sm text-gray-400">
+                  Search for songs on YouTube Music and add them to the queue
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4 items-start">
+              <div className="flex-shrink-0 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center font-bold">
+                4
               </div>
               <div>
                 <h4 className="font-semibold mb-1">Listen Together</h4>
@@ -288,7 +286,7 @@ export default function Home() {
       <footer className="border-t border-gray-800 mt-16">
         <div className="container mx-auto px-4 py-8">
           <p className="text-center text-gray-500 text-sm">
-            Built with Next.js, Socket.io, and SoundCloud Widget API
+            Built with Next.js, Socket.io, YouTube IFrame API, and ytmusic-api
           </p>
         </div>
       </footer>

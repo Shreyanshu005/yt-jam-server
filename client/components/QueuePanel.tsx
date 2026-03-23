@@ -1,8 +1,8 @@
-import { SoundCloudTrack, formatDuration, getArtworkUrl } from '@/lib/soundcloudAPI';
+import { YTTrack, formatDuration, getThumbnailUrl } from '@/lib/ytmusicAPI';
 
 interface QueuePanelProps {
-  queue: SoundCloudTrack[];
-  currentTrack: SoundCloudTrack | null;
+  queue: YTTrack[];
+  currentTrack: YTTrack | null;
   onTrackSelect: (index: number) => void;
   onRemoveTrack: (index: number) => void;
   onClearQueue: () => void;
@@ -39,18 +39,15 @@ const QueuePanel: React.FC<QueuePanelProps> = ({
 
       {/* Current Track */}
       {currentTrack && (
-        <div className="p-4 bg-gradient-to-r from-orange-900/20 to-transparent border-b border-gray-700">
-          <p className="text-xs text-orange-400 mb-2 font-semibold">NOW PLAYING</p>
+        <div className="p-4 bg-gradient-to-r from-red-900/20 to-transparent border-b border-gray-700">
+          <p className="text-xs text-red-400 mb-2 font-semibold">NOW PLAYING</p>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
-              {currentTrack.artwork_url || currentTrack.user.avatar_url ? (
+              {currentTrack.thumbnails && currentTrack.thumbnails.length > 0 ? (
                 <img
-                  src={getArtworkUrl(currentTrack, 'small')}
+                  src={getThumbnailUrl(currentTrack, 'small')}
                   alt={currentTrack.title}
                   className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.src = currentTrack.user.avatar_url || '';
-                  }}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
@@ -62,9 +59,9 @@ const QueuePanel: React.FC<QueuePanelProps> = ({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-white font-medium truncate text-sm">{currentTrack.title}</p>
-              <p className="text-gray-400 text-xs truncate">{currentTrack.user.username}</p>
+              <p className="text-gray-400 text-xs truncate">{currentTrack.artist}</p>
             </div>
-            <div className="flex items-center gap-1 text-orange-500 flex-shrink-0">
+            <div className="flex items-center gap-1 text-red-500 flex-shrink-0">
               <svg className="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
               </svg>
@@ -89,7 +86,7 @@ const QueuePanel: React.FC<QueuePanelProps> = ({
           <div className="p-2">
             {queue.map((track, index) => (
               <div
-                key={`${track.id}-${index}`}
+                key={`${track.videoId}-${index}`}
                 className="flex items-center gap-3 p-2 hover:bg-gray-700/50 rounded-lg cursor-pointer group mb-1"
               >
                 {/* Queue Number */}
@@ -97,13 +94,30 @@ const QueuePanel: React.FC<QueuePanelProps> = ({
                   {index + 1}
                 </div>
 
+                {/* Thumbnail */}
+                <div className="w-10 h-10 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
+                  {track.thumbnails && track.thumbnails.length > 0 ? (
+                    <img
+                      src={getThumbnailUrl(track, 'small')}
+                      alt={track.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+
                 {/* Track Info */}
                 <div className="flex-1 min-w-0" onClick={() => onTrackSelect(index)}>
                   <p className="text-white text-sm truncate">{track.title}</p>
                   <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <span className="truncate">{track.user.username}</span>
+                    <span className="truncate">{track.artist}</span>
                     <span>•</span>
-                    <span className="flex-shrink-0">{formatDuration(track.duration)}</span>
+                    <span className="flex-shrink-0">{formatDuration(track.durationSeconds)}</span>
                   </div>
                 </div>
 
@@ -129,7 +143,7 @@ const QueuePanel: React.FC<QueuePanelProps> = ({
           <div className="flex items-center justify-between text-xs text-gray-400">
             <span>Total duration</span>
             <span className="font-mono">
-              {formatDuration(queue.reduce((acc, track) => acc + track.duration, 0))}
+              {formatDuration(queue.reduce((acc, track) => acc + (track.durationSeconds || 0), 0))}
             </span>
           </div>
         </div>
