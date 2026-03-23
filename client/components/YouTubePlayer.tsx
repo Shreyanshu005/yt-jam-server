@@ -232,13 +232,24 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   useEffect(() => {
     if (!isAPIReady || !videoId || !playerContainerRef.current) return;
 
-    // Destroy existing player if videoId changed
+    // If player already exists and video changed, just load the new video (don't destroy!)
+    // This is critical for Safari — destroying + recreating the iframe causes redirect to YouTube
     if (playerRef.current && currentVideoId && currentVideoId !== videoId) {
-      playerRef.current.destroy();
-      playerRef.current = null;
+      try {
+        if (autoPlay) {
+          playerRef.current.loadVideoById(videoId, 0);
+        } else {
+          playerRef.current.cueVideoById(videoId, 0);
+        }
+        setCurrentVideoId(videoId);
+      } catch (err) {
+        console.error('Error loading video, will recreate player:', err);
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
     }
 
-    // Create new player if needed
+    // Create new player only if one doesn't exist yet
     if (!playerRef.current) {
       const playerId = `youtube-player-${Date.now()}`;
       
@@ -268,6 +279,19 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           onReady: () => {
             console.log('YouTube Player Ready');
             setCurrentVideoId(videoId);
+
+            // Force playsinline attribute on the iframe for older Safari
+            try {
+              const iframe = playerContainerRef.current?.querySelector('iframe');
+              if (iframe) {
+                iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+                iframe.setAttribute('webkit-playsinline', 'true');
+                iframe.setAttribute('playsinline', 'true');
+              }
+            } catch (e) {
+              // ignore
+            }
+
             onReady(createPlayerRef());
           },
           onStateChange: (event: YTPlayerEvent) => {

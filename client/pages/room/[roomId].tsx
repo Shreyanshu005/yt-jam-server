@@ -40,6 +40,7 @@ export default function RoomPage() {
   const [nameInput, setNameInput] = useState<string>('');
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [showParticipants, setShowParticipants] = useState<boolean>(false);
 
   const playerRef = useRef<YouTubePlayerRef | null>(null);
   const socketRef = useRef<any>(null);
@@ -148,6 +149,9 @@ export default function RoomPage() {
       setQueue(data.queue || []);
       setIsHost(data.isHost);
       setUserCount(data.userCount);
+      if (data.users) {
+        setUsers(data.users);
+      }
       setIsLoading(false);
 
       justJoinedRoom.current = true;
@@ -552,8 +556,42 @@ export default function RoomPage() {
                   {isConnected ? 'Connected' : 'Disconnected'}
                 </span>
               </div>
-              <div className="text-sm bg-gray-800 px-4 py-2 rounded-lg">
-                👥 {userCount} {userCount === 1 ? 'person' : 'people'}
+              <div className="relative">
+                <button
+                  onClick={() => setShowParticipants(!showParticipants)}
+                  className="text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  👥 {userCount} {userCount === 1 ? 'person' : 'people'}
+                  <svg className={`w-3 h-3 ml-1 transition-transform ${showParticipants ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showParticipants && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-700">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Participants</p>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {users.map((user) => (
+                        <div
+                          key={user.id}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-700/50 transition-colors"
+                        >
+                          <div className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0 animate-pulse"></div>
+                          <span className="text-sm text-gray-200 truncate flex-1">
+                            {user.name}
+                            {user.id === socketRef.current?.id && (
+                              <span className="text-gray-500 ml-1">(you)</span>
+                            )}
+                          </span>
+                          {users.length > 0 && users[0]?.id === user.id && (
+                            <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-semibold">HOST</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               {isHost && (
                 <div className="text-sm bg-red-600 px-4 py-2 rounded-lg font-semibold">
@@ -687,6 +725,51 @@ export default function RoomPage() {
 
             {/* Right Column - Queue and Chat */}
             <div className="lg:col-span-1 space-y-6">
+              {/* Participants */}
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+                  <h3 className="font-semibold text-sm">👥 Participants ({userCount})</h3>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                    <span className="text-xs text-green-400">Live</span>
+                  </div>
+                </div>
+                <div className="divide-y divide-gray-700/50 max-h-48 overflow-y-auto">
+                  {users.map((user, idx) => (
+                    <div
+                      key={user.id}
+                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-700/30 transition-colors"
+                    >
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                        style={{
+                          background: `hsl(${(user.name.charCodeAt(0) * 37) % 360}, 60%, 40%)`,
+                        }}
+                      >
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {user.name}
+                          {user.id === socketRef.current?.id && (
+                            <span className="text-gray-500 ml-1 text-xs">(you)</span>
+                          )}
+                        </p>
+                        {idx === 0 && (
+                          <p className="text-[10px] text-red-400 font-semibold">HOST</p>
+                        )}
+                      </div>
+                      <div className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></div>
+                    </div>
+                  ))}
+                  {users.length === 0 && (
+                    <div className="px-4 py-6 text-center text-gray-500 text-sm">
+                      No participants yet
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Queue */}
               <div className="h-[500px]">
                 <QueuePanel

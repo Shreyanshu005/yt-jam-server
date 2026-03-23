@@ -37,23 +37,64 @@ app.use(express.json());
 
 let ytmusicClient = null;
 let ytmusicInitPromise = null;
+let ytmusicInitTime = 0;
 
-async function getYTMusicClient() {
+// Max age for the client session (4 hours) – forces a fresh init periodically
+const CLIENT_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+
+async function initYTMusicClient() {
+  const client = new YTMusic();
+  const cookies = process.env.YTMUSIC_COOKIES;
+  await client.initialize(cookies);
+  ytmusicClient = client;
+  ytmusicInitTime = Date.now();
+  console.log('✅ YTMusic client initialized at', new Date().toISOString());
+  return client;
+}
+
+async function getYTMusicClient(forceReinit = false) {
+  // Force re-init if explicitly requested or session is too old
+  const isExpired = ytmusicClient && (Date.now() - ytmusicInitTime > CLIENT_MAX_AGE_MS);
+
+  if (forceReinit || isExpired) {
+    console.log(`🔄 Re-initializing YTMusic client (force=${forceReinit}, expired=${isExpired})`);
+    ytmusicClient = null;
+    ytmusicInitPromise = null;
+  }
+
   if (ytmusicClient) return ytmusicClient;
   if (ytmusicInitPromise) return ytmusicInitPromise;
 
-  ytmusicInitPromise = (async () => {
-    const client = new YTMusic();
-    // Optional cookies support (string). If you need auth-restricted content,
-    // set YTMUSIC_COOKIES in server env.
-    const cookies = process.env.YTMUSIC_COOKIES;
-    await client.initialize(cookies);
-    ytmusicClient = client;
-    console.log('✅ YTMusic client initialized');
-    return client;
-  })();
+  ytmusicInitPromise = initYTMusicClient().catch((err) => {
+    // Reset so next call retries
+    ytmusicClient = null;
+    ytmusicInitPromise = null;
+    throw err;
+  });
 
   return ytmusicInitPromise;
+}
+
+/**
+ * Execute a YTMusic operation with automatic retry & client re-init on failure.
+ * Retries up to `maxRetries` times, re-initializing the client on each failure.
+ */
+async function withYTMusicRetry(operation, maxRetries = 2) {
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const client = await getYTMusicClient(attempt > 0); // force re-init on retries
+      return await operation(client);
+    } catch (err) {
+      lastError = err;
+      console.error(`YTMusic attempt ${attempt + 1}/${maxRetries + 1} failed:`, err.message);
+      if (attempt < maxRetries) {
+        // Small backoff before retry
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
 }
 
 function parseDurationToSeconds(duration) {
@@ -122,6 +163,8 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     rooms: rooms.size,
+    ytmusicClient: ytmusicClient ? 'initialized' : 'not initialized',
+    ytmusicClientAge: ytmusicInitTime ? `${Math.round((Date.now() - ytmusicInitTime) / 1000)}s` : 'N/A',
     timestamp: new Date().toISOString()
   });
 });
@@ -142,21 +185,18 @@ app.get('/api/ytmusic/search', async (req, res) => {
       return res.status(400).json({ error: 'Query parameter required' });
     }
 
-    console.log('Getting YTMusic client...');
-    const client = await getYTMusicClient();
-    console.log('Client ready, searching for:', q);
-
-    let results;
     const numericLimit = Math.min(Number(limit) || 20, 50);
 
-    if (filter === 'videos') {
-      results = await client.searchVideos(String(q));
-    } else if (filter === 'all') {
-      results = await client.search(String(q));
-    } else {
-      // default: songs
-      results = await client.searchSongs(String(q));
-    }
+    const results = await withYTMusicRetry(async (client) => {
+      console.log('Searching for:', q, '(filter:', filter, ')');
+      if (filter === 'videos') {
+        return await client.searchVideos(String(q));
+      } else if (filter === 'all') {
+        return await client.search(String(q));
+      } else {
+        return await client.searchSongs(String(q));
+      }
+    });
 
     console.log('Search results count:', results?.length || 0);
 
@@ -167,8 +207,7 @@ app.get('/api/ytmusic/search', async (req, res) => {
 
     res.json({ collection: mapped });
   } catch (error) {
-    console.error('YTMusic search error:', error);
-    // Send a response instead of letting it crash
+    console.error('YTMusic search error (all retries exhausted):', error);
     return res.status(500).json({ 
       error: 'Failed to search YouTube Music',
       message: error.message || 'Unknown error'
@@ -185,8 +224,9 @@ app.get('/api/ytmusic/video', async (req, res) => {
       return res.status(400).json({ error: 'videoId parameter required' });
     }
 
-    const client = await getYTMusicClient();
-    const data = await client.getVideo(String(videoId));
+    const data = await withYTMusicRetry(async (client) => {
+      return await client.getVideo(String(videoId));
+    });
 
     // Normalize to the same track shape used by the client UI.
     const mapped = mapSearchItemToTrack({
@@ -200,7 +240,7 @@ app.get('/api/ytmusic/video', async (req, res) => {
 
     res.json(mapped || { videoId: String(videoId) });
   } catch (error) {
-    console.error('YTMusic getVideo error:', error);
+    console.error('YTMusic getVideo error (all retries exhausted):', error);
     res.status(500).json({ error: 'Failed to get video details' });
   }
 });
@@ -214,11 +254,12 @@ app.get('/api/ytmusic/suggestions', async (req, res) => {
       return res.status(400).json({ error: 'Query parameter required' });
     }
 
-    const client = await getYTMusicClient();
-    const suggestions = await client.getSearchSuggestions(String(q));
+    const suggestions = await withYTMusicRetry(async (client) => {
+      return await client.getSearchSuggestions(String(q));
+    });
     res.json({ suggestions: Array.isArray(suggestions) ? suggestions : [] });
   } catch (error) {
-    console.error('YTMusic suggestions error:', error);
+    console.error('YTMusic suggestions error (all retries exhausted):', error);
     res.status(500).json({ error: 'Failed to get suggestions' });
   }
 });
