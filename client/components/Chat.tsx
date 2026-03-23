@@ -19,7 +19,6 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, username, currentU
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -44,43 +43,42 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, username, currentU
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700">
-      {/* Chat Header */}
-      <div className="px-4 py-3 border-b border-gray-700">
-        <h3 className="text-lg font-semibold text-white">Chat</h3>
-        <p className="text-xs text-gray-400">Talk with viewers</p>
+    <div className="flex flex-col h-full glass-card">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-white/[0.04]">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">💬 Chat</h3>
+        <p className="text-[10px] text-gray-600 mt-0.5">Talk with everyone</p>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
         {messages.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm mt-8">
-            No messages yet. Start the conversation!
+          <div className="text-center text-gray-700 text-[11px] mt-8">
+            <div className="text-2xl mb-2">💬</div>
+            No messages yet
           </div>
         ) : (
           messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex flex-col ${
-                msg.userId === currentUserId ? 'items-end' : 'items-start'
-              }`}
+              className={`flex flex-col ${msg.userId === currentUserId ? 'items-end' : 'items-start'}`}
             >
               <div
-                className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                className={`max-w-[82%] rounded-xl px-3 py-2 ${
                   msg.userId === currentUserId
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-700 text-gray-100'
+                    ? 'bg-gradient-to-br from-red-500/80 to-pink-600/80 text-white'
+                    : 'bg-white/[0.04] text-gray-200 border border-white/[0.04]'
                 }`}
               >
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-xs font-semibold">
+                <div className="flex items-baseline gap-2 mb-0.5">
+                  <span className="text-[10px] font-semibold opacity-80">
                     {msg.userId === currentUserId ? 'You' : msg.username}
                   </span>
-                  <span className="text-xs opacity-70">
+                  <span className="text-[9px] opacity-40 font-mono">
                     {formatTime(msg.timestamp)}
                   </span>
                 </div>
-                <p className="text-sm break-words">{msg.message}</p>
+                <p className="text-xs break-words leading-relaxed">{msg.message}</p>
               </div>
             </div>
           ))
@@ -89,7 +87,7 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, username, currentU
       </div>
 
       {/* Input */}
-      <div className="p-4 border-t border-gray-700">
+      <div className="p-3 border-t border-white/[0.04]">
         <div className="flex gap-2">
           <input
             type="text"
@@ -97,20 +95,19 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, username, currentU
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Type a message..."
-            className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+            className="flex-1 bg-white/[0.03] border border-white/[0.05] rounded-xl px-3.5 py-2 text-white placeholder-gray-600 focus:outline-none focus:border-red-500/30 focus:ring-1 focus:ring-red-500/10 text-xs transition-all"
             maxLength={500}
           />
           <button
             onClick={handleSend}
             disabled={!inputMessage.trim()}
-            className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
+            className="px-4 py-2 rounded-xl font-semibold transition-all text-xs bg-gradient-to-r from-red-500/80 to-pink-600/80 hover:from-red-500 hover:to-pink-600 disabled:opacity-20 disabled:cursor-not-allowed text-white"
           >
-            Send
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
           </button>
         </div>
-        <p className="text-xs text-gray-500 mt-1">
-          Press Enter to send • {inputMessage.length}/500
-        </p>
       </div>
     </div>
   );

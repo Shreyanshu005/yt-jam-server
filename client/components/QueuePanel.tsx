@@ -10,61 +10,55 @@ interface QueuePanelProps {
 }
 
 const QueuePanel: React.FC<QueuePanelProps> = ({
-  queue,
-  currentTrack,
-  onTrackSelect,
-  onRemoveTrack,
-  onClearQueue,
-  onMoveTrack,
+  queue, currentTrack, onTrackSelect, onRemoveTrack, onClearQueue, onMoveTrack,
 }) => {
   return (
-    <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-700 flex flex-col h-full">
+    <div className="glass-card flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Queue</h3>
-          <p className="text-xs text-gray-400">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Queue</h3>
+          <p className="text-[10px] text-gray-600 mt-0.5">
             {queue.length} {queue.length === 1 ? 'track' : 'tracks'}
           </p>
         </div>
         {queue.length > 0 && (
-          <button
-            onClick={onClearQueue}
-            className="text-xs text-red-400 hover:text-red-300 transition-colors"
-          >
-            Clear All
+          <button onClick={onClearQueue} className="text-[10px] text-red-400/70 hover:text-red-400 transition-colors uppercase tracking-wider font-medium">
+            Clear
           </button>
         )}
       </div>
 
-      {/* Current Track */}
+      {/* Now Playing */}
       {currentTrack && (
-        <div className="p-4 bg-gradient-to-r from-red-900/20 to-transparent border-b border-gray-700">
-          <p className="text-xs text-red-400 mb-2 font-semibold">NOW PLAYING</p>
+        <div className="px-4 py-3 bg-gradient-to-r from-red-500/[0.06] to-transparent border-b border-white/[0.04]">
+          <p className="text-[9px] text-red-400/70 mb-2 font-semibold uppercase tracking-wider">Now Playing</p>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
+            <div className="w-10 h-10 bg-white/[0.03] rounded-lg flex-shrink-0 overflow-hidden ring-1 ring-white/[0.05]">
               {currentTrack.thumbnails && currentTrack.thumbnails.length > 0 ? (
-                <img
-                  src={getThumbnailUrl(currentTrack, 'small')}
-                  alt={currentTrack.title}
-                  className="w-full h-full object-cover"
-                />
+                <img src={getThumbnailUrl(currentTrack, 'small')} alt={currentTrack.title} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                <div className="w-full h-full flex items-center justify-center text-gray-600">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
                   </svg>
                 </div>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white font-medium truncate text-sm">{currentTrack.title}</p>
-              <p className="text-gray-400 text-xs truncate">{currentTrack.artist}</p>
+              <p className="text-white font-medium truncate text-xs">{currentTrack.title}</p>
+              <p className="text-gray-500 text-[10px] truncate">{currentTrack.artist}</p>
             </div>
-            <div className="flex items-center gap-1 text-red-500 flex-shrink-0">
-              <svg className="w-4 h-4 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
-              </svg>
+            <div className="flex items-center gap-1 text-red-400/60 flex-shrink-0">
+              <div className="flex items-end gap-[2px] h-3">
+                {[1,2,3].map(i => (
+                  <div key={i} className="w-[3px] bg-red-400/60 rounded-full animate-pulse" style={{
+                    height: `${8 + Math.random() * 6}px`,
+                    animationDelay: `${i * 0.15}s`,
+                    animationDuration: `${0.6 + i * 0.1}s`,
+                  }} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -74,60 +68,48 @@ const QueuePanel: React.FC<QueuePanelProps> = ({
       <div className="flex-1 overflow-y-auto">
         {queue.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-            <div className="w-16 h-16 bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
-              <svg className="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+            <div className="w-12 h-12 bg-white/[0.02] rounded-xl flex items-center justify-center mb-3 border border-white/[0.04]">
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
               </svg>
             </div>
-            <p className="text-gray-400 text-sm">Queue is empty</p>
-            <p className="text-gray-500 text-xs mt-1">Search and add tracks to get started</p>
+            <p className="text-gray-500 text-xs">Queue is empty</p>
+            <p className="text-gray-700 text-[10px] mt-1">Search and add tracks</p>
           </div>
         ) : (
-          <div className="p-2">
+          <div className="p-1.5">
             {queue.map((track, index) => (
               <div
                 key={`${track.videoId}-${index}`}
-                className="flex items-center gap-3 p-2 hover:bg-gray-700/50 rounded-lg cursor-pointer group mb-1"
+                className="flex items-center gap-2.5 p-2 hover:bg-white/[0.03] rounded-lg cursor-pointer group mb-0.5 transition-colors"
               >
-                {/* Queue Number */}
-                <div className="w-6 text-center text-gray-500 text-sm font-mono flex-shrink-0">
+                <div className="w-5 text-center text-gray-600 text-[10px] font-mono flex-shrink-0">
                   {index + 1}
                 </div>
-
-                {/* Thumbnail */}
-                <div className="w-10 h-10 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
+                <div className="w-9 h-9 bg-white/[0.03] rounded-lg flex-shrink-0 overflow-hidden ring-1 ring-white/[0.03]">
                   {track.thumbnails && track.thumbnails.length > 0 ? (
-                    <img
-                      src={getThumbnailUrl(track, 'small')}
-                      alt={track.title}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={getThumbnailUrl(track, 'small')} alt={track.title} className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                    <div className="w-full h-full flex items-center justify-center text-gray-700">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
                       </svg>
                     </div>
                   )}
                 </div>
-
-                {/* Track Info */}
                 <div className="flex-1 min-w-0" onClick={() => onTrackSelect(index)}>
-                  <p className="text-white text-sm truncate">{track.title}</p>
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <p className="text-white text-[11px] truncate font-medium">{track.title}</p>
+                  <div className="flex items-center gap-1.5 text-[10px] text-gray-600">
                     <span className="truncate">{track.artist}</span>
-                    <span>•</span>
-                    <span className="flex-shrink-0">{formatDuration(track.durationSeconds)}</span>
+                    <span>·</span>
+                    <span className="flex-shrink-0 font-mono">{formatDuration(track.durationSeconds)}</span>
                   </div>
                 </div>
-
-                {/* Remove Button */}
                 <button
                   onClick={() => onRemoveTrack(index)}
-                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-1 hover:bg-red-500/20 rounded transition-all"
-                  title="Remove from queue"
+                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-1 hover:bg-red-500/10 rounded-md transition-all"
                 >
-                  <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5 text-red-400/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -137,14 +119,12 @@ const QueuePanel: React.FC<QueuePanelProps> = ({
         )}
       </div>
 
-      {/* Queue Info Footer */}
+      {/* Footer */}
       {queue.length > 0 && (
-        <div className="p-3 border-t border-gray-700 bg-gray-900/50">
-          <div className="flex items-center justify-between text-xs text-gray-400">
-            <span>Total duration</span>
-            <span className="font-mono">
-              {formatDuration(queue.reduce((acc, track) => acc + (track.durationSeconds || 0), 0))}
-            </span>
+        <div className="px-4 py-2.5 border-t border-white/[0.04] bg-white/[0.01]">
+          <div className="flex items-center justify-between text-[10px] text-gray-600">
+            <span>Total</span>
+            <span className="font-mono">{formatDuration(queue.reduce((acc, track) => acc + (track.durationSeconds || 0), 0))}</span>
           </div>
         </div>
       )}
