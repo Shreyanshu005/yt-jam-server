@@ -154,6 +154,11 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(15px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .animate-slide-up {
   animation: slideUp 0.6s ease-out forwards;
 }
@@ -172,3 +177,115 @@ body {
   animation: slideUp 0.6s ease-out 0.3s forwards;
   opacity: 0;
 }
+
+/* ═══════════════════════════════════════════
+   🎀 Pookie Theme — cutie girlie pink mode
+   ═══════════════════════════════════════════ */
+
+.theme-pookie {
+  --accent: 244, 114, 182;
+  --accent-glow: rgba(244, 114, 182, 0.3);
+  --glass: rgba(60, 10, 40, 0.7);
+  --glass-border: rgba(244, 114, 182, 0.15);
+  --foreground-rgb: 255, 255, 255;
+  background-image: url('/pookie-bg.webp');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* Dark pink overlay so text is readable */
+.pookie-overlay {
+  background: rgba(30, 5, 25, 0.55);
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.theme-pookie .glass-card {
+  background: rgba(50, 8, 35, 0.78);
+  border-color: rgba(244, 114, 182, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(244, 114, 182, 0.08);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+}
+
+.theme-pookie .glass-card-hover:hover {
+  background: rgba(60, 10, 40, 0.85);
+  border-color: rgba(244, 114, 182, 0.25);
+  box-shadow: 0 12px 40px rgba(244, 114, 182, 0.12), inset 0 1px 0 rgba(244, 114, 182, 0.1);
+}
+
+.theme-pookie .glow-red,
+.theme-pookie .glow-red-lg {
+  box-shadow: 0 0 25px rgba(244, 114, 182, 0.5), 0 0 70px rgba(244, 114, 182, 0.2);
+}
+
+.theme-pookie .text-glow {
+  text-shadow: 0 0 40px rgba(244, 114, 182, 0.6), 0 0 80px rgba(244, 114, 182, 0.3);
+}
+
+.theme-pookie .btn-primary {
+  background: linear-gradient(135deg, #f472b6, #ec4899, #db2777);
+  box-shadow: 0 4px 20px rgba(244, 114, 182, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.theme-pookie .btn-primary:hover {
+  box-shadow: 0 8px 30px rgba(244, 114, 182, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.theme-pookie .input-premium {
+  background: rgba(50, 8, 35, 0.6);
+  border-color: rgba(244, 114, 182, 0.2);
+  color: #fce7f3;
+}
+
+.theme-pookie .input-premium::placeholder {
+  color: rgba(244, 114, 182, 0.4);
+}
+
+.theme-pookie .input-premium:focus {
+  border-color: rgba(244, 114, 182, 0.5);
+  box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.15), 0 0 25px rgba(244, 114, 182, 0.15);
+  background: rgba(50, 8, 35, 0.75);
+}
+
+.theme-pookie .bg-mesh {
+  background-image: none;
+}
+
+.theme-pookie .bg-mesh-subtle {
+  background-image: none;
+}
+
+/* Cute floating hearts animation */
+@keyframes floatHeart {
+  0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.7; }
+  50% { transform: translateY(-25px) rotate(12deg) scale(1.15); opacity: 0.9; }
+  100% { transform: translateY(0) rotate(0deg) scale(1); opacity: 0.7; }
+}
+
+.pookie-heart {
+  animation: floatHeart 4s ease-in-out infinite;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 0 6px rgba(244, 114, 182, 0.4));
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.theme-pookie *::-webkit-scrollbar-thumb {
+  background: rgba(244, 114, 182, 0.2);
+}
+
+.theme-pookie *::-webkit-scrollbar-thumb:hover {
+  background: rgba(244, 114, 182, 0.35);
+}
+
+

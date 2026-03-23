@@ -42,6 +42,9 @@ export default function RoomPage() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showParticipants, setShowParticipants] = useState<boolean>(false);
 
+  // 🎀 Pookie mode detection
+  const isPookie = username.toLowerCase() === 'anjali' || nameInput.toLowerCase() === 'anjali';
+
   const playerRef = useRef<YouTubePlayerRef | null>(null);
   const socketRef = useRef<any>(null);
   const ignoreNextStateChange = useRef<boolean>(false);
@@ -226,7 +229,7 @@ export default function RoomPage() {
           lastSyncTime.current = now;
           lastKnownTime.current = ct;
         } else { lastKnownTime.current = ct; }
-      } catch (error) {}
+      } catch (error) { }
     }, 200);
   }, [roomId, pendingRoomState, syncToRoomState]);
 
@@ -294,7 +297,7 @@ export default function RoomPage() {
     if (socketRef.current && roomId && queue.length > 0) socketRef.current.emit('next-track', { roomId });
   };
 
-  const handlePrevious = () => {};
+  const handlePrevious = () => { };
 
   const handleSeek = (time: number) => {
     if (playerRef.current) {
@@ -327,18 +330,39 @@ export default function RoomPage() {
 
   // ── Name Prompt ──
   if (showNamePrompt) {
+    const promptPookie = nameInput.toLowerCase() === 'anjali';
     return (
-      <div className="min-h-screen bg-[rgb(5,5,15)] bg-mesh text-white flex items-center justify-center">
+      <div className={`min-h-screen bg-mesh text-white flex items-center justify-center ${promptPookie ? 'theme-pookie' : 'bg-[rgb(5,5,15)]'}`}>
+        {/* Dark overlay for pookie readability */}
+        {promptPookie && <div className="pookie-overlay" />}
         <div className="fixed inset-0 pointer-events-none">
-          <div className="absolute top-1/3 left-1/3 w-[400px] h-[400px] bg-red-500/5 rounded-full blur-[120px] animate-float" />
+          <div className={`absolute top-1/3 left-1/3 w-[400px] h-[400px] rounded-full blur-[120px] animate-float ${promptPookie ? 'bg-pink-400/8' : 'bg-red-500/5'}`} />
+          {promptPookie && <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-fuchsia-400/5 rounded-full blur-[100px] animate-float" style={{ animationDelay: '2s' }} />}
         </div>
-        <div className="relative glass-card p-10 max-w-md w-full mx-4">
+        {/* Floating hearts for pookie */}
+        {promptPookie && (
+          <div className="fixed inset-0 pointer-events-none overflow-hidden z-[1]">
+            {['💖', '🩷', '✨', '💗', '🎀', '💕'].map((h, i) => (
+              <span key={i} className="absolute text-lg pookie-heart" style={{
+                left: `${10 + i * 15}%`,
+                top: `${15 + (i % 3) * 25}%`,
+                animationDelay: `${i * 0.7}s`,
+                fontSize: `${14 + (i % 3) * 6}px`,
+              }}>{h}</span>
+            ))}
+          </div>
+        )}
+        <div className="relative z-10 glass-card p-10 max-w-md w-full mx-4">
           <div className="text-center mb-8">
-            <div className="text-6xl mb-4">🎵</div>
+            <div className="text-6xl mb-4">{promptPookie ? '🎀' : '🎵'}</div>
             <h1 className="text-3xl font-bold tracking-tight">
-              <span className="bg-gradient-to-r from-red-400 to-pink-500 bg-clip-text text-transparent">Welcome to YT Jam</span>
+              <span className={`bg-clip-text text-transparent ${promptPookie ? 'bg-gradient-to-r from-pink-300 via-pink-400 to-fuchsia-400' : 'bg-gradient-to-r from-red-400 to-pink-500'}`}>
+                {promptPookie ? 'Hii Babyy Gurlll! 💖' : 'Welcome to YT Jam'}
+              </span>
             </h1>
-            <p className="text-gray-500 mt-2 text-sm">Enter your name to join the room</p>
+            <p className={`mt-2 text-sm ${promptPookie ? 'text-pink-200/80' : 'text-gray-500'}`}>
+              {promptPookie ? 'Made with love, just for you~ 💕' : 'Enter your name to join the room'}
+            </p>
           </div>
           <div className="space-y-4">
             <input
@@ -351,8 +375,26 @@ export default function RoomPage() {
               className="input-premium text-center text-lg"
               autoFocus
             />
+            {/* Instant cute welcome when she types "anjali" */}
+            {promptPookie && (
+              <div className="text-center py-3 px-4 rounded-xl bg-pink-500/10 border border-pink-400/15 animate-[fadeSlideIn_0.4s_ease-out]">
+                <p className="text-pink-200 text-sm font-medium mb-1">
+                  ✨ Welcome back, my beautiful princess~ ✨
+                </p>
+                <p className="text-pink-300/60 text-[11px] italic">
+                  {[
+                    '"You\'re the melody to my favorite song 🎵"',
+                    '"Every love story is beautiful, but ours is my favorite 💕"',
+                    '"You make my heart skip a beat, baby 💖"',
+                    '"I fall in love with you a little more every day 🩷"',
+                    '"You\'re not just my girl, you\'re my whole world 🌍💗"',
+                    '"Life is better with you in it, pookie 🎀"',
+                  ][Math.floor(nameInput.length % 6)]}
+                </p>
+              </div>
+            )}
             <button onClick={handleNameSubmit} className="w-full btn-primary text-white">
-              Join Room →
+              {promptPookie ? '💖 Enter Your Pink Room' : 'Join Room →'}
             </button>
           </div>
           <p className="text-center text-gray-700 text-xs mt-6">
@@ -382,12 +424,29 @@ export default function RoomPage() {
 
   // ── Main Room ──
   return (
-    <div className="min-h-screen bg-[rgb(5,5,15)] text-white">
+    <div className={`min-h-screen text-white ${isPookie ? 'theme-pookie' : 'bg-[rgb(5,5,15)]'}`}>
       {/* Background effects */}
       <div className="fixed inset-0 bg-mesh-subtle pointer-events-none" />
+      {/* Dark overlay for pookie readability */}
+      {isPookie && <div className="pookie-overlay" />}
+
+      {/* Floating hearts for pookie */}
+      {isPookie && (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden z-[1]">
+          {['💖', '🩷', '✨', '💗', '🎀', '💕', '🌸', '💖'].map((h, i) => (
+            <span key={i} className="absolute pookie-heart" style={{
+              left: `${5 + i * 12}%`,
+              top: `${10 + (i % 4) * 22}%`,
+              animationDelay: `${i * 0.8}s`,
+              fontSize: `${12 + (i % 3) * 5}px`,
+              opacity: 0.3,
+            }}>{h}</span>
+          ))}
+        </div>
+      )}
 
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/[0.04] bg-[rgb(5,5,15)]/80 backdrop-blur-xl">
+      <header className={`sticky top-0 z-40 border-b backdrop-blur-xl ${isPookie ? 'border-pink-400/15 bg-[rgba(50,8,35,0.85)]' : 'border-white/[0.04] bg-[rgb(5,5,15)]/80'}`}>
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -398,7 +457,9 @@ export default function RoomPage() {
               </button>
               <div>
                 <h1 className="text-lg font-bold tracking-tight">
-                  <span className="bg-gradient-to-r from-red-400 to-pink-500 bg-clip-text text-transparent">YT Jam</span>
+                  <span className={`bg-clip-text text-transparent ${isPookie ? 'bg-gradient-to-r from-pink-300 to-fuchsia-400' : 'bg-gradient-to-r from-red-400 to-pink-500'}`}>
+                    {isPookie ? '🎀 YT Jam' : 'YT Jam'}
+                  </span>
                 </h1>
                 <p className="text-[10px] text-gray-600 font-mono tracking-wider">{roomId}</p>
               </div>
@@ -452,20 +513,20 @@ export default function RoomPage() {
               </div>
 
               {isHost && (
-                <div className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-400 font-semibold">
-                  HOST
+                <div className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold ${isPookie ? 'bg-pink-500/15 border border-pink-400/20 text-pink-300' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                  {isPookie ? '👑 PRINCESS' : 'HOST'}
                 </div>
               )}
 
               {/* Share button */}
               <button
                 onClick={copyRoomLink}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] transition-colors text-[11px] text-gray-400"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-[11px] ${isPookie ? 'bg-pink-500/10 border border-pink-400/15 hover:bg-pink-500/20 text-pink-300' : 'bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] text-gray-400'}`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                 </svg>
-                Share
+                {isPookie ? '💌 Share' : 'Share'}
               </button>
             </div>
           </div>
@@ -497,9 +558,11 @@ export default function RoomPage() {
                   </div>
                 )}
                 {!videoId && (
-                  <div className="mt-4 bg-white/[0.02] rounded-xl p-8 text-center">
-                    <div className="text-4xl mb-3">🔍</div>
-                    <p className="text-gray-400 text-sm">Search and select a track to start playing</p>
+                  <div className={`mt-4 rounded-xl p-8 text-center ${isPookie ? 'bg-pink-900/20' : 'bg-white/[0.02]'}`}>
+                    <div className="text-4xl mb-3">{isPookie ? '🎀' : '🔍'}</div>
+                    <p className={`text-sm ${isPookie ? 'text-pink-200' : 'text-gray-400'}`}>
+                      {isPookie ? 'Pick a song and vibe with me, baby~ 🎧💖' : 'Search and select a track to start playing'}
+                    </p>
                   </div>
                 )}
               </div>
@@ -520,24 +583,34 @@ export default function RoomPage() {
 
               {/* Search */}
               <div className="glass-card p-5">
-                <h2 className="text-sm font-semibold mb-3 text-gray-400 uppercase tracking-wider">Search</h2>
+                <h2 className={`text-sm font-semibold mb-3 uppercase tracking-wider ${isPookie ? 'text-pink-300' : 'text-gray-400'}`}>
+                  {isPookie ? '🔍 Find Your Jam, Babe' : 'Search'}
+                </h2>
                 <TrackSearch onTrackSelect={handleTrackSelect} onAddToQueue={handleAddToQueue} />
               </div>
 
               {/* Room info */}
               <div className="glass-card p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Room Info</h2>
+                  <h2 className={`text-sm font-semibold uppercase tracking-wider ${isPookie ? 'text-pink-300' : 'text-gray-400'}`}>
+                    {isPookie ? '💖 Your Vibe Zone' : 'Room Info'}
+                  </h2>
                 </div>
-                <div className="bg-white/[0.02] rounded-xl p-4 border border-white/[0.03]">
-                  <p className="text-xs text-gray-500 leading-relaxed">
-                    {isHost
-                      ? '👑 You are the host. Everyone can control playback!'
-                      : '🎧 You are a participant. Everyone can search, queue, and control playback!'}
+                <div className={`rounded-xl p-4 border ${isPookie ? 'bg-pink-900/15 border-pink-400/10' : 'bg-white/[0.02] border-white/[0.03]'}`}>
+                  <p className={`text-xs leading-relaxed ${isPookie ? 'text-pink-200/80' : 'text-gray-500'}`}>
+                    {isPookie
+                      ? (isHost
+                        ? '👑 You\'re my queen and the DJ tonight~ play whatever your heart desires, baby 💖'
+                        : '🎀 You\'re in my room, love! Search songs, queue them up, and let\'s vibe together~ 💕')
+                      : (isHost
+                        ? '👑 You are the host. Everyone can control playback!'
+                        : '🎧 You are a participant. Everyone can search, queue, and control playback!')}
                   </p>
                   {userCount > 1 && (
-                    <p className="text-xs text-emerald-400/70 mt-2">
-                      ✨ Listening with {userCount - 1} other {userCount - 1 === 1 ? 'person' : 'people'}
+                    <p className={`text-xs mt-2 ${isPookie ? 'text-pink-300/70' : 'text-emerald-400/70'}`}>
+                      {isPookie
+                        ? `💕 Listening together with ${userCount - 1} other cutie${userCount - 1 === 1 ? '' : 's'} 🎶`
+                        : `✨ Listening with ${userCount - 1} other ${userCount - 1 === 1 ? 'person' : 'people'}`}
                     </p>
                   )}
                 </div>
@@ -545,9 +618,9 @@ export default function RoomPage() {
 
               <button
                 onClick={() => router.push('/')}
-                className="w-full py-3 rounded-xl text-sm font-medium text-gray-500 hover:text-white bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.04] hover:border-white/[0.08] transition-all"
+                className={`w-full py-3 rounded-xl text-sm font-medium transition-all ${isPookie ? 'text-pink-300/70 hover:text-pink-200 bg-pink-900/15 hover:bg-pink-900/25 border border-pink-400/10 hover:border-pink-400/20' : 'text-gray-500 hover:text-white bg-white/[0.02] hover:bg-white/[0.05] border border-white/[0.04] hover:border-white/[0.08]'}`}
               >
-                ← Leave Room
+                {isPookie ? '💕 Leave Room (miss you already~)' : '← Leave Room'}
               </button>
             </div>
 
@@ -555,11 +628,13 @@ export default function RoomPage() {
             <div className="lg:col-span-4 space-y-4">
               {/* Participants */}
               <div className="glass-card overflow-hidden">
-                <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">👥 Participants ({userCount})</h3>
+                <div className={`px-4 py-3 border-b flex items-center justify-between ${isPookie ? 'border-pink-400/10' : 'border-white/[0.04]'}`}>
+                  <h3 className={`text-xs font-semibold uppercase tracking-wider ${isPookie ? 'text-pink-300' : 'text-gray-400'}`}>
+                    {isPookie ? '💖 Cuties Here (' + userCount + ')' : '👥 Participants (' + userCount + ')'}
+                  </h3>
                   <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] text-emerald-400/70">Live</span>
+                    <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${isPookie ? 'bg-pink-400' : 'bg-emerald-400'}`} />
+                    <span className={`text-[10px] ${isPookie ? 'text-pink-400/70' : 'text-emerald-400/70'}`}>Live</span>
                   </div>
                 </div>
                 <div className="divide-y divide-white/[0.03] max-h-40 overflow-y-auto">
@@ -595,7 +670,7 @@ export default function RoomPage() {
                   onTrackSelect={handlePlayFromQueue}
                   onRemoveTrack={handleRemoveFromQueue}
                   onClearQueue={handleClearQueue}
-                  onMoveTrack={() => {}}
+                  onMoveTrack={() => { }}
                 />
               </div>
 
