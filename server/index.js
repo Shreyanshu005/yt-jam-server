@@ -588,6 +588,57 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('new-message', chatMessage);
   });
 
+  // Handle kicking an user
+  socket.on('kick-user', ({ roomId, targetUserId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const requesterName = room.userNames.get(socket.id) || '';
+    const targetName = room.userNames.get(targetUserId) || '';
+    const isRequesterAnjali = requesterName.toLowerCase() === 'anjali';
+    const isTargetAnjali = targetName.toLowerCase() === 'anjali';
+
+    // Permission check: only host or Anjali can kick
+    if (room.host !== socket.id && !isRequesterAnjali) {
+      return; // unauthorized
+    }
+
+    // Protection check: Anjali can NEVER be kicked
+    if (isTargetAnjali) {
+      return; 
+    }
+
+    // If valid, tell the target user they are kicked
+    if (room.users.has(targetUserId)) {
+      console.log(`Room ${roomId}: User ${targetName} (${targetUserId}) kicked by ${requesterName}`);
+      io.to(targetUserId).emit('kicked');
+      
+      // We don't remove them here, the client will receive 'kicked', 
+      // alert the user, and emit 'leave-room' or disconnect automatically.
+      // But we can forcibly disconnect their socket to be safe:
+      const targetSocket = io.sockets.sockets.get(targetUserId);
+      if (targetSocket) {
+        targetSocket.leave(roomId);
+      }
+      
+      // Clean up server state manually in case leave-room isn't fast enough
+      room.users.delete(targetUserId);
+      room.userNames.delete(targetUserId);
+      
+      if (room.host === targetUserId && room.users.size > 0) {
+        const newHost = Array.from(room.users)[0];
+        room.host = newHost;
+        io.to(newHost).emit('host-assigned');
+      }
+
+      const usersList = Array.from(room.users).map(id => ({
+        id,
+        name: room.userNames.get(id) || 'Anonymous'
+      }));
+      io.to(roomId).emit('user-count', { count: room.users.size, users: usersList });
+    }
+  });
+
   // Handle explicit leave room
   socket.on('leave-room', ({ roomId }) => {
     const room = rooms.get(roomId);

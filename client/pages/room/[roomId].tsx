@@ -88,6 +88,7 @@ export default function RoomPage() {
     const storedUsername = localStorage.getItem('ytjam_username');
     if (storedUsername) {
       setUsername(storedUsername);
+      setShowNamePrompt(false);
     } else {
       setShowNamePrompt(true);
     }
@@ -192,6 +193,11 @@ export default function RoomPage() {
       }
     });
 
+    socket.on('kicked', () => {
+      alert(isPookie ? 'Oh no! You were kicked from the pink room! 🎀' : 'You have been kicked from the room by the host.');
+      router.push('/');
+    });
+
     return () => {
       clearTimeout(loadingTimeout);
       if (seekDetectionInterval.current) clearInterval(seekDetectionInterval.current);
@@ -205,14 +211,20 @@ export default function RoomPage() {
       socket.off('seek');
       socket.off('video-changed');
       socket.off('queue-updated');
-      socket.off('current-track-updated');
       socket.off('new-message');
+      socket.off('kicked');
       if (roomId) socket.emit('leave-room', { roomId });
     };
   }, [roomId, queryVideoId, username, isLoading, syncToRoomState]);
 
   const handlePlayerReady = useCallback((player: YouTubePlayerRef) => {
     playerRef.current = player;
+    
+    // If not showing name prompt, user has interacted or is returning, try to unlock audio
+    if (!showNamePrompt && typeof player.forcePlay === 'function') {
+      try { player.forcePlay(); } catch (e) {}
+    }
+
     if (pendingRoomState) { syncToRoomState(pendingRoomState); setPendingRoomState(null); }
     if (seekDetectionInterval.current) clearInterval(seekDetectionInterval.current);
     seekDetectionInterval.current = setInterval(() => {
@@ -288,8 +300,15 @@ export default function RoomPage() {
 
   const handlePlayPause = () => {
     if (playerRef.current) {
-      if (playerRef.current.isPaused()) playerRef.current.play();
-      else playerRef.current.pause();
+      if (playerRef.current.isPaused()) {
+        if (typeof playerRef.current.forcePlay === 'function') {
+           playerRef.current.forcePlay();
+        } else {
+           playerRef.current.play();
+        }
+      } else {
+        playerRef.current.pause();
+      }
     }
   };
 
@@ -638,26 +657,56 @@ export default function RoomPage() {
                   </div>
                 </div>
                 <div className="divide-y divide-white/[0.03] max-h-40 overflow-y-auto">
-                  {users.map((user, idx) => (
-                    <div key={user.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] transition-colors">
+                  {users.map((user, idx) => {
+                    const isBf = isPookie && user.name.toLowerCase() === 'shreyanshu';
+                    return (
+                    <div key={user.id} className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${isBf ? 'hover:bg-pink-500/5 bg-pink-500/[0.03]' : 'hover:bg-white/[0.02]'}`}>
                       <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-                        style={{ background: `hsl(${(user.name.charCodeAt(0) * 37) % 360}, 50%, 30%)` }}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${isBf ? 'ring-1 ring-pink-400/30' : ''}`}
+                        style={{ background: isBf ? 'linear-gradient(135deg, #ec4899, #f472b6)' : `hsl(${(user.name.charCodeAt(0) * 37) % 360}, 50%, 30%)` }}
                       >
-                        {user.name.charAt(0).toUpperCase()}
+                        {isBf ? '🥔' : user.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium truncate">
-                          {user.name}
-                          {user.id === socketRef.current?.id && <span className="text-gray-600 ml-1 text-[10px]">(you)</span>}
+                          {isBf ? (
+                            <>
+                              <span className="text-pink-200">Cutie Potatoie</span>
+                              <span className="text-pink-400/50 ml-1 text-[10px]">(your bf 💖)</span>
+                            </>
+                          ) : (
+                            <>
+                              {user.name}
+                              {user.id === socketRef.current?.id && <span className="text-gray-600 ml-1 text-[10px]">(you)</span>}
+                            </>
+                          )}
                         </p>
-                        {idx === 0 && <p className="text-[9px] text-red-400/70 font-semibold">HOST</p>}
+                        {idx === 0 && (
+                          <p className={`text-[9px] font-semibold ${isPookie ? 'text-pink-400/70' : 'text-red-400/70'}`}>
+                            {isPookie ? (isBf ? '💖 YOUR LOVER' : '👑 PRINCESS') : 'HOST'}
+                          </p>
+                        )}
                       </div>
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 flex-shrink-0" />
+                      
+                      {/* Kick Button logic */}
+                      {user.id !== socketRef.current?.id && 
+                       (isHost || isPookie) && 
+                       user.name.toLowerCase() !== 'anjali' && (
+                        <button
+                          onClick={() => socketRef.current?.emit('kick-user', { roomId, targetUserId: user.id })}
+                          className={`px-2 py-1 rounded text-[10px] font-semibold transition-all mr-2 ${isPookie ? 'bg-pink-500/10 text-pink-400 hover:bg-pink-500/20 border border-pink-400/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20'}`}
+                          title="Kick user from room"
+                        >
+                          Kick
+                        </button>
+                      )}
+
+                      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isPookie ? 'bg-pink-400/60' : 'bg-emerald-400/60'}`} />
                     </div>
-                  ))}
+                    );
+                  })}
                   {users.length === 0 && (
-                    <div className="px-4 py-6 text-center text-gray-600 text-xs">No participants yet</div>
+                    <div className={`px-4 py-6 text-center text-xs ${isPookie ? 'text-pink-300/40' : 'text-gray-600'}`}>No participants yet</div>
                   )}
                 </div>
               </div>
@@ -676,14 +725,14 @@ export default function RoomPage() {
 
               {/* Chat */}
               <div className="h-[380px]">
-                <Chat messages={messages} onSendMessage={handleSendMessage} username={username} currentUserId={userId} />
+                <Chat messages={messages} onSendMessage={handleSendMessage} username={username} currentUserId={userId} isPookie={isPookie} />
               </div>
             </div>
           </div>
         </div>
       </main>
 
-      <Toast toasts={toasts} removeToast={removeToast} />
+      <Toast toasts={toasts} removeToast={removeToast} isPookie={isPookie} />
     </div>
   );
 }

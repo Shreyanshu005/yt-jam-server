@@ -11,19 +11,20 @@ export interface ToastMessage {
 interface ToastProps {
   toasts: ToastMessage[];
   removeToast: (id: string) => void;
+  isPookie?: boolean;
 }
 
-const Toast: React.FC<ToastProps> = ({ toasts, removeToast }) => {
+const Toast: React.FC<ToastProps> = ({ toasts, removeToast, isPookie }) => {
   return (
     <div className="fixed top-4 right-4 z-[10000] space-y-2 max-w-sm">
       {toasts.map((toast) => (
-        <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
+        <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} isPookie={isPookie} />
       ))}
     </div>
   );
 };
 
-const ToastItem: React.FC<{ toast: ToastMessage; onClose: () => void }> = ({ toast, onClose }) => {
+const ToastItem: React.FC<{ toast: ToastMessage; onClose: () => void; isPookie?: boolean }> = ({ toast, onClose, isPookie }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
 
@@ -38,13 +39,21 @@ const ToastItem: React.FC<{ toast: ToastMessage; onClose: () => void }> = ({ toa
 
   const handleClose = () => { setIsLeaving(true); setTimeout(onClose, 300); };
 
-  const styles = {
+  const styles = isPookie ? {
+    info: 'from-pink-500/90 to-rose-400/90 border-pink-400/40 shadow-pink-500/20',
+    success: 'from-fuchsia-500/90 to-pink-500/90 border-fuchsia-400/40 shadow-fuchsia-500/20',
+    error: 'from-rose-600/90 to-red-500/90 border-rose-400/40 shadow-rose-500/20',
+  }[toast.type] : {
     info: 'from-blue-500/90 to-blue-600/90 border-blue-400/20',
     success: 'from-emerald-500/90 to-emerald-600/90 border-emerald-400/20',
     error: 'from-red-500/90 to-red-600/90 border-red-400/20',
   }[toast.type];
 
-  const icons = {
+  const icons = isPookie ? {
+    info: '🎀',
+    success: '💖',
+    error: '💔',
+  }[toast.type] : {
     info: '💬',
     success: '✅',
     error: '❌',
@@ -54,7 +63,7 @@ const ToastItem: React.FC<{ toast: ToastMessage; onClose: () => void }> = ({ toa
     <div
       className={`
         bg-gradient-to-r ${styles} text-white rounded-xl border backdrop-blur-xl p-3.5 cursor-pointer
-        transform transition-all duration-300 shadow-2xl
+        transform transition-all duration-300 shadow-xl
         ${isVisible && !isLeaving ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
       `}
       onClick={handleClose}

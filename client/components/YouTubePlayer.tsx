@@ -85,6 +85,7 @@ export interface YouTubePlayerRef {
   mute: () => void;
   unMute: () => void;
   isMuted: () => boolean;
+  forcePlay: () => void;
 }
 
 interface YouTubePlayerProps {
@@ -115,6 +116,7 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const [isAPIReady, setIsAPIReady] = useState(false);
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const silenceAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -226,6 +228,16 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
       }
       return false;
     },
+    forcePlay: () => {
+      // Play the silent audio to activate background playback capabilities
+      if (silenceAudioRef.current) {
+        silenceAudioRef.current.play().catch(e => console.log('Silence play prevented:', e));
+      }
+      // Force play YouTube 
+      if (playerRef.current && typeof playerRef.current.playVideo === 'function') {
+        playerRef.current.playVideo();
+      }
+    }
   }), []);
 
   // Initialize player when API is ready and we have a videoId
@@ -372,11 +384,21 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   }
 
   return (
-    <div 
-      ref={playerContainerRef}
-      className="w-full bg-black rounded-lg overflow-hidden shadow-2xl"
-      style={{ minHeight: `${height}px` }}
-    />
+    <>
+      <div 
+        ref={playerContainerRef}
+        className="w-full bg-black rounded-lg overflow-hidden shadow-2xl"
+        style={{ minHeight: `${height}px` }}
+      />
+      {/* Silent audio track to keep media session alive in background */}
+      <audio 
+        ref={silenceAudioRef}
+        src="/silence.mp3"
+        loop
+        playsInline
+        style={{ display: 'none' }}
+      />
+    </>
   );
 };
 
