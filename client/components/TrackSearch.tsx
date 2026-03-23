@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { searchTracks, YTTrack, formatDuration, getThumbnailUrl } from '@/lib/ytmusicAPI';
 
 interface TrackSearchProps {
@@ -12,6 +13,7 @@ const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue }
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [searchError, setSearchError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -33,18 +35,23 @@ const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue }
     if (!query.trim()) {
       setResults([]);
       setShowResults(false);
+      setSearchError(null);
       return;
     }
 
     const timer = setTimeout(async () => {
       setIsSearching(true);
+      setSearchError(null);
       try {
+        console.log('Searching for:', query);
         const tracks = await searchTracks(query, 10, 'songs');
+        console.log('Search results:', tracks);
         setResults(tracks);
         updatePosition();
         setShowResults(true);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Search error:', error);
+        setSearchError(error.message || 'Search failed');
         setResults([]);
       } finally {
         setIsSearching(false);
@@ -86,6 +93,114 @@ const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue }
     }
   };
 
+  // Render dropdown using portal to avoid stacking context issues
+  const renderDropdown = () => {
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
+      <>
+        {/* Backdrop to close results */}
+        {showResults && (
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setShowResults(false)}
+          />
+        )}
+
+        {/* Search Results Dropdown */}
+        {showResults && results.length > 0 && (
+          <div
+            className="fixed z-[9999] bg-gray-800 border border-gray-700 rounded-lg shadow-2xl max-h-96 overflow-y-auto"
+            style={{
+              top: `${dropdownPosition.top}px`,
+              left: `${dropdownPosition.left}px`,
+              width: `${dropdownPosition.width}px`,
+            }}
+          >
+            {results.map((track) => (
+              <div
+                key={track.videoId}
+                className="flex items-center gap-3 p-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-b-0"
+              >
+                <div className="flex-1" onClick={() => handleTrackSelect(track)}>
+                  <div className="flex items-center gap-3">
+                    {/* Thumbnail */}
+                    <div className="w-12 h-12 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
+                      {track.thumbnails && track.thumbnails.length > 0 ? (
+                        <img
+                          src={getThumbnailUrl(track, 'small')}
+                          alt={track.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <svg className="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Track Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium truncate">{track.title}</p>
+                      <p className="text-gray-400 text-sm truncate">{track.artist}</p>
+                    </div>
+
+                    {/* Duration */}
+                    <div className="text-gray-500 text-sm flex-shrink-0">
+                      {formatDuration(track.durationSeconds)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Add to Queue Button */}
+                <button
+                  onClick={(e) => handleAddToQueue(track, e)}
+                  className="flex-shrink-0 bg-gray-900 hover:bg-gray-600 p-2 rounded-lg transition-colors"
+                  title="Add to queue"
+                >
+                  <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* No results message */}
+        {showResults && query && results.length === 0 && !isSearching && !searchError && (
+          <div
+            className="fixed z-[9999] bg-gray-800 border border-gray-700 rounded-lg shadow-2xl p-4"
+            style={{
+              top: `${dropdownPosition.top}px`,
+              left: `${dropdownPosition.left}px`,
+              width: `${dropdownPosition.width}px`,
+            }}
+          >
+            <p className="text-gray-400 text-center">No tracks found</p>
+          </div>
+        )}
+
+        {/* Error message */}
+        {showResults && searchError && (
+          <div
+            className="fixed z-[9999] bg-gray-800 border border-red-700 rounded-lg shadow-2xl p-4"
+            style={{
+              top: `${dropdownPosition.top}px`,
+              left: `${dropdownPosition.left}px`,
+              width: `${dropdownPosition.width}px`,
+            }}
+          >
+            <p className="text-red-400 text-center">Error: {searchError}</p>
+          </div>
+        )}
+      </>,
+      document.body
+    );
+  };
+
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">
@@ -109,88 +224,8 @@ const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue }
         </div>
       </div>
 
-      {/* Backdrop to close results */}
-      {showResults && (
-        <div
-          className="fixed inset-0 z-[9998]"
-          onClick={() => setShowResults(false)}
-        />
-      )}
-
-      {/* Search Results Dropdown - Fixed position for proper z-index stacking */}
-      {showResults && results.length > 0 && (
-        <div
-          className="fixed z-[9999] bg-gray-800 border border-gray-700 rounded-lg shadow-2xl max-h-96 overflow-y-auto"
-          style={{
-            top: `${dropdownPosition.top}px`,
-            left: `${dropdownPosition.left}px`,
-            width: `${dropdownPosition.width}px`,
-          }}
-        >
-          {results.map((track) => (
-            <div
-              key={track.videoId}
-              className="flex items-center gap-3 p-3 hover:bg-gray-700 cursor-pointer border-b border-gray-700 last:border-b-0"
-            >
-              <div className="flex-1" onClick={() => handleTrackSelect(track)}>
-                <div className="flex items-center gap-3">
-                  {/* Thumbnail */}
-                  <div className="w-12 h-12 bg-gray-900 rounded flex-shrink-0 overflow-hidden">
-                    {track.thumbnails && track.thumbnails.length > 0 ? (
-                      <img
-                        src={getThumbnailUrl(track, 'small')}
-                        alt={track.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Track Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium truncate">{track.title}</p>
-                    <p className="text-gray-400 text-sm truncate">{track.artist}</p>
-                  </div>
-
-                  {/* Duration */}
-                  <div className="text-gray-500 text-sm flex-shrink-0">
-                    {formatDuration(track.durationSeconds)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Add to Queue Button */}
-              <button
-                onClick={(e) => handleAddToQueue(track, e)}
-                className="flex-shrink-0 bg-gray-900 hover:bg-gray-600 p-2 rounded-lg transition-colors"
-                title="Add to queue"
-              >
-                <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {showResults && query && results.length === 0 && !isSearching && (
-        <div
-          className="fixed z-[9999] bg-gray-800 border border-gray-700 rounded-lg shadow-2xl p-4"
-          style={{
-            top: `${dropdownPosition.top}px`,
-            left: `${dropdownPosition.left}px`,
-            width: `${dropdownPosition.width}px`,
-          }}
-        >
-          <p className="text-gray-400 text-center">No tracks found</p>
-        </div>
-      )}
+      {/* Render dropdown via portal */}
+      {renderDropdown()}
     </div>
   );
 };
