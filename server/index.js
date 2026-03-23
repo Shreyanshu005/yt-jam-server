@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const YTMusic = require('ytmusic-api');
+const ytSearch = require('yt-search');
 
 const app = express();
 const server = http.createServer(app);
@@ -189,13 +190,34 @@ app.get('/api/ytmusic/search', async (req, res) => {
 
     const results = await withYTMusicRetry(async (client) => {
       console.log('Searching for:', q, '(filter:', filter, ')');
-      if (filter === 'videos') {
-        return await client.searchVideos(String(q));
-      } else if (filter === 'all') {
-        return await client.search(String(q));
-      } else {
-        return await client.searchSongs(String(q));
+      
+      let res;
+      try {
+        if (filter === 'videos') {
+          res = await client.searchVideos(String(q));
+        } else if (filter === 'all') {
+          res = await client.search(String(q));
+        } else {
+          res = await client.searchSongs(String(q));
+        }
+      } catch (err) {
+        console.warn(`Primary search approach failed for "${q}". Attempting fallback...`);
+        res = [];
       }
+
+      // Fallback strategies if the first attempt failed or returned empty
+      if (!res || res.length === 0) {
+        try { res = await client.searchVideos(String(q)); } catch(e) {}
+      }
+      if (!res || res.length === 0) {
+        try { res = await client.search(String(q)); } catch(e) {}
+      }
+      
+      if (!res || res.length === 0) {
+        throw new Error('No results found using any search strategy');
+      }
+
+      return res;
     });
 
     console.log('Search results count:', results?.length || 0);
@@ -207,11 +229,25 @@ app.get('/api/ytmusic/search', async (req, res) => {
 
     res.json({ collection: mapped });
   } catch (error) {
-    console.error('YTMusic search error (all retries exhausted):', error);
-    return res.status(500).json({ 
-      error: 'Failed to search YouTube Music',
-      message: error.message || 'Unknown error'
-    });
+    console.warn('YTMusic search failed (403 or other). Falling back to yt-search:', error.message);
+    try {
+      const fallbackResults = await ytSearch(String(q));
+      const mappedFallback = (fallbackResults.videos || []).slice(0, numericLimit).map(v => ({
+        videoId: v.videoId,
+        title: v.title,
+        artist: v.author?.name || 'Unknown',
+        durationSeconds: v.duration?.seconds || 0,
+        thumbnails: v.image ? [{ url: v.image }] : [],
+        type: 'VIDEO'
+      }));
+      return res.json({ collection: mappedFallback });
+    } catch (fallbackError) {
+      console.error('Fallback search also failed:', fallbackError);
+      return res.status(500).json({ 
+        error: 'Failed to search YouTube',
+        message: fallbackError.message || 'Unknown error'
+      });
+    }
   }
 });
 

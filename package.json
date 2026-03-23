@@ -9,8 +9,11 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "build:server": "cd server && npm install",
     "build:client": "cd client && npm run build",
+    "build": "npm run build:server",
+    "postinstall": "cd server && npm install",
     "start:server": "cd server && npm start",
-    "start:client": "cd client && npm start"
+    "start:client": "cd client && npm start",
+    "start": "npm run start:server"
   },
   "keywords": [
     "youtube",
