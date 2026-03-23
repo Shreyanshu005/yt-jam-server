@@ -14,7 +14,7 @@ export interface YTTrack {
   type: string;
 }
 
-const SERVER_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
+const SERVER_URL = (process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000').replace(/\/$/, '');
 
 /**
  * Search for tracks on YouTube Music
@@ -24,7 +24,7 @@ export async function searchTracks(query: string, limit: number = 20, filter: 's
 
   try {
     const response = await fetch(
-      `${SERVER_URL}/api/ytmusic/search?q=${encodeURIComponent(query)}&limit=${limit}&filter=${filter}`
+      `/api/ytmusic/search?q=${encodeURIComponent(query)}&limit=${limit}&filter=${filter}`
     );
 
     if (!response.ok) {
@@ -45,7 +45,7 @@ export async function searchTracks(query: string, limit: number = 20, filter: 's
 export async function getVideoDetails(videoId: string): Promise<YTTrack | null> {
   try {
     const response = await fetch(
-      `${SERVER_URL}/api/ytmusic/video?videoId=${encodeURIComponent(videoId)}`
+      `/api/ytmusic/video?videoId=${encodeURIComponent(videoId)}`
     );
 
     if (!response.ok) {
@@ -67,7 +67,7 @@ export async function getSearchSuggestions(query: string): Promise<string[]> {
 
   try {
     const response = await fetch(
-      `${SERVER_URL}/api/ytmusic/suggestions?q=${encodeURIComponent(query)}`
+      `/api/ytmusic/suggestions?q=${encodeURIComponent(query)}`
     );
 
     if (!response.ok) {

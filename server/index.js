@@ -21,10 +21,11 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.vercel.app')) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // Allow all origins for simplicity in this project (avoids Vercel deployment CORS blocks)
+      callback(null, true);
     }
   },
   credentials: true
@@ -144,10 +145,11 @@ const io = new Server(server, {
       // Allow requests with no origin
       if (!origin) return callback(null, true);
       
-      if (allowedOrigins.indexOf(origin) !== -1) {
+      if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.vercel.app')) {
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        // Allow all origins for simplicity in this project (avoids Vercel deployment CORS blocks)
+        callback(null, true);
       }
     },
     methods: ['GET', 'POST'],
@@ -178,16 +180,15 @@ app.get('/health', (req, res) => {
 // GET /api/ytmusic/search?q=...&limit=20&filter=songs|videos|all
 app.get('/api/ytmusic/search', async (req, res) => {
   console.log('Search request received:', req.query);
-  
+  const { q, limit = 20, filter = 'songs' } = req.query;
+
+  if (!q) {
+    return res.status(400).json({ error: 'Query parameter required' });
+  }
+
+  const numericLimit = Math.min(Number(limit) || 20, 50);
+
   try {
-    const { q, limit = 20, filter = 'songs' } = req.query;
-
-    if (!q) {
-      return res.status(400).json({ error: 'Query parameter required' });
-    }
-
-    const numericLimit = Math.min(Number(limit) || 20, 50);
-
     const results = await withYTMusicRetry(async (client) => {
       console.log('Searching for:', q, '(filter:', filter, ')');
       

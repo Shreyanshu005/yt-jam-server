@@ -231,7 +231,7 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     forcePlay: () => {
       // Play the silent audio to activate background playback capabilities
       if (silenceAudioRef.current) {
-        silenceAudioRef.current.play().catch(e => console.log('Silence play prevented:', e));
+        silenceAudioRef.current.play().catch(() => {});
       }
       // Force play YouTube 
       if (playerRef.current && typeof playerRef.current.playVideo === 'function') {
