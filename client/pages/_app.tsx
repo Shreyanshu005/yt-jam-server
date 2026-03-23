@@ -3,12 +3,32 @@ import type { AppProps } from 'next/app'
 import Head from 'next/head'
 import { useState, useEffect, useCallback } from 'react'
 import ServerWakeUp from '@/components/ServerWakeUp'
+import Lenis from '@studio-freight/lenis'
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:4000';
 
 export default function App({ Component, pageProps }: AppProps) {
   // null = checking, true = server awake, false = server sleeping
   const [serverStatus, setServerStatus] = useState<null | boolean>(null);
+
+  // Initialize Lenis smooth scroll
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), // https://www.desmos.com/calculator/brs54l4xou
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, []);
 
   // Quick initial check — if server responds fast, skip the wake-up screen entirely
   useEffect(() => {

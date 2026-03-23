@@ -6,6 +6,8 @@ import QueuePanel from '@/components/QueuePanel';
 import PlayerControls from '@/components/PlayerControls';
 import Chat from '@/components/Chat';
 import Toast, { ToastMessage } from '@/components/Toast';
+import LoveWidget from '@/components/LoveWidget';
+import MagicRings from '@/components/MagicRings';
 import { getSocket } from '@/lib/socket';
 import { YTTrack } from '@/lib/ytmusicAPI';
 
@@ -449,6 +451,37 @@ export default function RoomPage() {
       {/* Dark overlay for pookie readability */}
       {isPookie && <div className="pookie-overlay" />}
 
+      {/* Magic Rings background for pookie */}
+      {isPookie && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-[1] opacity-40 mix-blend-screen overflow-hidden">
+          <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+            <MagicRings
+              color="#fc42ff"
+              colorTwo="#42fcff"
+              ringCount={6}
+              speed={1}
+              attenuation={10}
+              lineThickness={2}
+              baseRadius={0.35}
+              radiusStep={0.1}
+              scaleRate={0.1}
+              opacity={1}
+              blur={0}
+              noiseAmount={0.1}
+              rotation={0}
+              ringGap={1.5}
+              fadeIn={0.7}
+              fadeOut={0.5}
+              followMouse={false}
+              mouseInfluence={0.2}
+              hoverScale={1.2}
+              parallax={0.05}
+              clickBurst={false}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Floating hearts for pookie */}
       {isPookie && (
         <div className="fixed inset-0 pointer-events-none overflow-hidden z-[1]">
@@ -468,25 +501,25 @@ export default function RoomPage() {
       <header className={`sticky top-0 z-40 border-b backdrop-blur-xl ${isPookie ? 'border-pink-400/15 bg-[rgba(50,8,35,0.85)]' : 'border-white/[0.04] bg-[rgb(5,5,15)]/80'}`}>
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button onClick={() => router.push('/')} className="text-gray-500 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/5">
+            <div className="flex items-center gap-2 md:gap-3 min-w-0 pr-2">
+              <button onClick={() => router.push('/')} className="flex-shrink-0 text-gray-500 hover:text-white transition-colors p-1 md:p-1.5 rounded-lg hover:bg-white/5">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <div>
-                <h1 className="text-lg font-bold tracking-tight">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-base md:text-lg font-bold tracking-tight truncate">
                   <span className={`bg-clip-text text-transparent ${isPookie ? 'bg-gradient-to-r from-pink-300 to-fuchsia-400' : 'bg-gradient-to-r from-red-400 to-pink-500'}`}>
                     {isPookie ? '🎀 YT Jam' : 'YT Jam'}
                   </span>
                 </h1>
-                <p className="text-[10px] text-gray-600 font-mono tracking-wider">{roomId}</p>
+                <p className="text-[10px] text-gray-600 font-mono tracking-wider truncate w-[100px] sm:w-auto">{roomId}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
               {/* Connection status */}
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.05]">
                 <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]' : 'bg-red-500'}`} />
                 <span className="text-[11px] text-gray-400">{isConnected ? 'Live' : 'Offline'}</span>
               </div>
@@ -504,7 +537,7 @@ export default function RoomPage() {
                   </svg>
                 </button>
                 {showParticipants && (
-                  <div className="absolute right-0 top-full mt-2 w-56 glass-card overflow-hidden z-50">
+                  <div className={`fixed right-4 top-16 sm:absolute sm:right-0 sm:top-full sm:mt-2 w-56 rounded-xl overflow-hidden z-[100] shadow-[0_0_30px_rgba(0,0,0,0.8)] border ${isPookie ? 'bg-[#400c25] border-pink-400/30' : 'bg-[#0a0a0f] border-white/10'}`}>
                     <div className="px-4 py-2.5 border-b border-white/[0.04]">
                       <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Participants</p>
                     </div>
@@ -599,6 +632,9 @@ export default function RoomPage() {
                 hasNext={queue.length > 0}
                 hasPrevious={false}
               />
+
+              {/* Pookie Love Widget */}
+              {isPookie && <LoveWidget />}
 
               {/* Search */}
               <div className="glass-card p-5">
