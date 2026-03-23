@@ -133,6 +133,8 @@ app.get('/health', (req, res) => {
 // Search YouTube Music
 // GET /api/ytmusic/search?q=...&limit=20&filter=songs|videos|all
 app.get('/api/ytmusic/search', async (req, res) => {
+  console.log('Search request received:', req.query);
+  
   try {
     const { q, limit = 20, filter = 'songs' } = req.query;
 
@@ -140,7 +142,9 @@ app.get('/api/ytmusic/search', async (req, res) => {
       return res.status(400).json({ error: 'Query parameter required' });
     }
 
+    console.log('Getting YTMusic client...');
     const client = await getYTMusicClient();
+    console.log('Client ready, searching for:', q);
 
     let results;
     const numericLimit = Math.min(Number(limit) || 20, 50);
@@ -154,6 +158,8 @@ app.get('/api/ytmusic/search', async (req, res) => {
       results = await client.searchSongs(String(q));
     }
 
+    console.log('Search results count:', results?.length || 0);
+
     const mapped = (Array.isArray(results) ? results : [])
       .map(mapSearchItemToTrack)
       .filter(Boolean)
@@ -162,7 +168,11 @@ app.get('/api/ytmusic/search', async (req, res) => {
     res.json({ collection: mapped });
   } catch (error) {
     console.error('YTMusic search error:', error);
-    res.status(500).json({ error: 'Failed to search YouTube Music' });
+    // Send a response instead of letting it crash
+    return res.status(500).json({ 
+      error: 'Failed to search YouTube Music',
+      message: error.message || 'Unknown error'
+    });
   }
 });
 
@@ -565,6 +575,15 @@ io.on('connection', (socket) => {
       }
     }
   });
+});
+
+// Global error handlers to prevent crashes
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 const PORT = process.env.PORT || 4000;
