@@ -189,39 +189,28 @@ app.get('/api/ytmusic/search', async (req, res) => {
   const numericLimit = Math.min(Number(limit) || 20, 50);
 
   try {
-    const results = await withYTMusicRetry(async (client) => {
+    let results = [];
+    try {
+      const client = await getYTMusicClient(false);
       console.log('Searching for:', q, '(filter:', filter, ')');
       
-      let res;
-      try {
-        if (filter === 'videos') {
-          res = await client.searchVideos(String(q));
-        } else if (filter === 'all') {
-          res = await client.search(String(q));
-        } else {
-          res = await client.searchSongs(String(q));
-        }
-      } catch (err) {
-        console.warn(`Primary search approach failed for "${q}". Attempting fallback...`);
-        res = [];
-      }
-
-      // Fallback strategies if the first attempt failed or returned empty
-      if (!res || res.length === 0) {
-        try { res = await client.searchVideos(String(q)); } catch(e) {}
-      }
-      if (!res || res.length === 0) {
-        try { res = await client.search(String(q)); } catch(e) {}
+      if (filter === 'videos') {
+        results = await client.searchVideos(String(q));
+      } else if (filter === 'all') {
+        results = await client.search(String(q));
+      } else {
+        results = await client.searchSongs(String(q));
       }
       
-      if (!res || res.length === 0) {
-        throw new Error('No results found using any search strategy');
+      if (!Array.isArray(results) || results.length === 0) {
+        throw new Error('No results from primary search');
       }
+    } catch (primaryError) {
+      console.warn('YTMusic primary search failed instantly. Triggering yt-search directly:', primaryError.message);
+      throw primaryError; // Pass to the outer catch block
+    }
 
-      return res;
-    });
-
-    console.log('Search results count:', results?.length || 0);
+    console.log('Search results count:', results.length);
 
     const mapped = (Array.isArray(results) ? results : [])
       .map(mapSearchItemToTrack)
