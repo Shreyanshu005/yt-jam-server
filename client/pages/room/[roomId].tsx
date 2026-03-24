@@ -639,11 +639,11 @@ export default function RoomPage() {
               {isPookie && <LoveWidget />}
 
               {/* Search */}
-              <div className="glass-card p-5">
+              <div className="glass-card p-5 relative z-30">
                 <h2 className={`text-sm font-semibold mb-3 uppercase tracking-wider ${isPookie ? 'text-pink-300' : 'text-gray-400'}`}>
                   {isPookie ? '🔍 Find Your Jam, Babe' : 'Search'}
                 </h2>
-                <TrackSearch onTrackSelect={handleTrackSelect} onAddToQueue={handleAddToQueue} />
+                <TrackSearch onTrackSelect={handleTrackSelect} onAddToQueue={handleAddToQueue} isPookie={isPookie} />
               </div>
 
               {/* Room info */}

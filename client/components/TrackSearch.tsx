@@ -5,9 +5,10 @@ import { searchTracks, YTTrack, formatDuration, getThumbnailUrl } from '@/lib/yt
 interface TrackSearchProps {
   onTrackSelect: (track: YTTrack) => void;
   onAddToQueue: (track: YTTrack) => void;
+  isPookie?: boolean;
 }
 
-const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue }) => {
+const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue, isPookie }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<YTTrack[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -25,21 +26,29 @@ const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue }
   }, []);
 
   useEffect(() => {
+    let active = true;
     if (!query.trim()) { setResults([]); setShowResults(false); setSearchError(null); return; }
     const timer = setTimeout(async () => {
       setIsSearching(true);
       setSearchError(null);
       try {
         const tracks = await searchTracks(query, 10, 'songs');
+        if (!active) return;
         setResults(tracks);
         updatePosition();
         setShowResults(true);
       } catch (error: any) {
+        if (!active) return;
         setSearchError(error.message || 'Search failed');
         setResults([]);
-      } finally { setIsSearching(false); }
+      } finally { 
+        if (active) setIsSearching(false); 
+      }
     }, 500);
-    return () => clearTimeout(timer);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [query, updatePosition]);
 
   useEffect(() => {
@@ -57,19 +66,15 @@ const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue }
   const handleFocus = () => { if (query && results.length > 0) { updatePosition(); setShowResults(true); } };
 
   const renderDropdown = () => {
-    if (typeof document === 'undefined') return null;
-    return createPortal(
+    return (
       <>
         {showResults && <div className="fixed inset-0 z-[9998]" onClick={() => setShowResults(false)} />}
         {showResults && results.length > 0 && (
-          <div
-            className="fixed z-[9999] glass-card max-h-[400px] overflow-y-auto"
-            style={{ top: `${dropdownPosition.top}px`, left: `${dropdownPosition.left}px`, width: `${dropdownPosition.width}px` }}
-          >
+          <div className={`absolute left-0 right-0 top-full mt-2 z-[9999] border rounded-2xl max-h-[400px] overflow-y-auto w-full shadow-[0_20px_40px_rgba(0,0,0,0.8)] ${isPookie ? 'bg-[#400c25] border-pink-400/30' : 'bg-[#0a0a0f] border-white/10'}`}>
             {results.map((track) => (
-              <div key={track.videoId} className="flex items-center gap-3 p-3 hover:bg-white/[0.04] cursor-pointer border-b border-white/[0.03] last:border-b-0 transition-colors">
-                <div className="flex-1" onClick={() => handleTrackSelect(track)}>
-                  <div className="flex items-center gap-3">
+              <div key={track.videoId} className="flex items-center gap-3 p-3 hover:bg-white/[0.04] cursor-pointer border-b border-white/[0.03] last:border-b-0 transition-colors w-full min-w-0">
+                <div className="flex-1 min-w-0" onClick={() => handleTrackSelect(track)}>
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-11 h-11 bg-white/[0.03] rounded-lg flex-shrink-0 overflow-hidden ring-1 ring-white/[0.04]">
                       {track.thumbnails && track.thumbnails.length > 0 ? (
                         <img src={getThumbnailUrl(track, 'small')} alt={track.title} className="w-full h-full object-cover" />
@@ -102,19 +107,19 @@ const TrackSearch: React.FC<TrackSearchProps> = ({ onTrackSelect, onAddToQueue }
           </div>
         )}
         {showResults && query && results.length === 0 && !isSearching && !searchError && (
-          <div className="fixed z-[9999] glass-card p-5 text-center" style={{ top: `${dropdownPosition.top}px`, left: `${dropdownPosition.left}px`, width: `${dropdownPosition.width}px` }}>
-            <p className="text-gray-500 text-xs">No tracks found</p>
+          <div className={`absolute left-0 right-0 top-full mt-2 z-[9999] border rounded-2xl p-5 text-center w-full shadow-[0_20px_40px_rgba(0,0,0,0.8)] ${isPookie ? 'bg-[#400c25] border-pink-400/30' : 'bg-[#0a0a0f] border-white/10'}`}>
+            <p className={`${isPookie ? 'text-pink-300' : 'text-gray-500'} text-xs`}>No tracks found</p>
           </div>
         )}
         {showResults && searchError && (
-          <div className="fixed z-[9999] glass-card border-red-500/20 p-5 text-center" style={{ top: `${dropdownPosition.top}px`, left: `${dropdownPosition.left}px`, width: `${dropdownPosition.width}px` }}>
+          <div className={`absolute left-0 right-0 top-full mt-2 z-[9999] border rounded-2xl p-5 text-center w-full shadow-[0_20px_40px_rgba(0,0,0,0.8)] ${isPookie ? 'bg-[#400c25] border-red-400/50' : 'bg-[#0a0a0f] border-red-500/20'}`}>
             <p className="text-red-400/70 text-xs">Error: {searchError}</p>
           </div>
         )}
-      </>,
-      document.body
+      </>
     );
   };
+
 
   return (
     <div ref={containerRef} className="relative">
