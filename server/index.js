@@ -176,11 +176,11 @@ app.get('/health', (req, res) => {
 // YouTube Music proxy endpoints
 // -----------------------------
 
-// Search YouTube Music
-// GET /api/ytmusic/search?q=...&limit=20&filter=songs|videos|all
+// Search YouTube
+// GET /api/ytmusic/search?q=...&limit=20
 app.get('/api/ytmusic/search', async (req, res) => {
   console.log('Search request received:', req.query);
-  const { q, limit = 20, filter = 'songs' } = req.query;
+  const { q, limit = 20 } = req.query;
 
   if (!q) {
     return res.status(400).json({ error: 'Query parameter required' });
@@ -189,55 +189,24 @@ app.get('/api/ytmusic/search', async (req, res) => {
   const numericLimit = Math.min(Number(limit) || 20, 50);
 
   try {
-    let results = [];
-    try {
-      const client = await getYTMusicClient(false);
-      console.log('Searching for:', q, '(filter:', filter, ')');
-      
-      if (filter === 'videos') {
-        results = await client.searchVideos(String(q));
-      } else if (filter === 'all') {
-        results = await client.search(String(q));
-      } else {
-        results = await client.searchSongs(String(q));
-      }
-      
-      if (!Array.isArray(results) || results.length === 0) {
-        throw new Error('No results from primary search');
-      }
-    } catch (primaryError) {
-      console.warn('YTMusic primary search failed instantly. Triggering yt-search directly:', primaryError.message);
-      throw primaryError; // Pass to the outer catch block
-    }
-
-    console.log('Search results count:', results.length);
-
-    const mapped = (Array.isArray(results) ? results : [])
-      .map(mapSearchItemToTrack)
-      .filter(Boolean)
-      .slice(0, numericLimit);
-
+    const results = await ytSearch(String(q));
+    const mapped = (results.videos || []).slice(0, numericLimit).map(v => ({
+      videoId: v.videoId,
+      title: v.title,
+      artist: v.author?.name || 'Unknown',
+      durationSeconds: v.duration?.seconds || 0,
+      thumbnails: v.image ? [{ url: v.image }] : [],
+      type: 'VIDEO'
+    }));
+    
+    console.log('Search results count:', mapped.length);
     res.json({ collection: mapped });
   } catch (error) {
-    console.warn('YTMusic search failed (403 or other). Falling back to yt-search:', error.message);
-    try {
-      const fallbackResults = await ytSearch(String(q));
-      const mappedFallback = (fallbackResults.videos || []).slice(0, numericLimit).map(v => ({
-        videoId: v.videoId,
-        title: v.title,
-        artist: v.author?.name || 'Unknown',
-        durationSeconds: v.duration?.seconds || 0,
-        thumbnails: v.image ? [{ url: v.image }] : [],
-        type: 'VIDEO'
-      }));
-      return res.json({ collection: mappedFallback });
-    } catch (fallbackError) {
-      console.error('Fallback search also failed:', fallbackError);
-      return res.status(500).json({ 
-        error: 'Failed to search YouTube',
-        message: fallbackError.message || 'Unknown error'
-      });
-    }
+    console.error('yt-search failed:', error);
+    return res.status(500).json({ 
+      error: 'Failed to search YouTube',
+      message: error.message || 'Unknown error'
+    });
   }
 });
 
@@ -250,23 +219,20 @@ app.get('/api/ytmusic/video', async (req, res) => {
       return res.status(400).json({ error: 'videoId parameter required' });
     }
 
-    const data = await withYTMusicRetry(async (client) => {
-      return await client.getVideo(String(videoId));
-    });
+    const data = await ytSearch({ videoId: String(videoId) });
 
-    // Normalize to the same track shape used by the client UI.
-    const mapped = mapSearchItemToTrack({
+    const mapped = {
       videoId: data?.videoId || String(videoId),
-      name: data?.name || data?.title || 'Unknown Title',
-      artist: { name: data?.artist?.name || data?.author?.name || 'Unknown Artist' },
-      duration: data?.duration,
-      thumbnails: data?.thumbnails,
-      type: data?.type || 'VIDEO'
-    });
+      title: data?.title || 'Unknown Title',
+      artist: data?.author?.name || 'Unknown Artist',
+      durationSeconds: data?.duration?.seconds || 0,
+      thumbnails: data?.image ? [{ url: data?.image }] : [],
+      type: 'VIDEO'
+    };
 
-    res.json(mapped || { videoId: String(videoId) });
+    res.json(mapped);
   } catch (error) {
-    console.error('YTMusic getVideo error (all retries exhausted):', error);
+    console.error('yt-search getVideo error:', error);
     res.status(500).json({ error: 'Failed to get video details' });
   }
 });
@@ -274,20 +240,9 @@ app.get('/api/ytmusic/video', async (req, res) => {
 // Get search suggestions
 // GET /api/ytmusic/suggestions?q=...
 app.get('/api/ytmusic/suggestions', async (req, res) => {
-  try {
-    const { q } = req.query;
-    if (!q) {
-      return res.status(400).json({ error: 'Query parameter required' });
-    }
-
-    const suggestions = await withYTMusicRetry(async (client) => {
-      return await client.getSearchSuggestions(String(q));
-    });
-    res.json({ suggestions: Array.isArray(suggestions) ? suggestions : [] });
-  } catch (error) {
-    console.error('YTMusic suggestions error (all retries exhausted):', error);
-    res.status(500).json({ error: 'Failed to get suggestions' });
-  }
+  // yt-search does not have a suggestions endpoint, so returning empty array.
+  // We rely fully on search query results instead.
+  res.json({ suggestions: [] });
 });
 
 // Get room info endpoint
