@@ -270,10 +270,12 @@ export default function RoomPage() {
   }, []);
 
   const handleVideoEnded = useCallback(() => {
-    if (socketRef.current && roomId && queue.length > 0) {
+    // Only the host should trigger the next track to prevent multiple clients 
+    // from instantly skipping through the entire queue simultaneously.
+    if (isHost && socketRef.current && roomId && queue.length > 0) {
       socketRef.current.emit('next-track', { roomId });
     }
-  }, [roomId, queue.length]);
+  }, [isHost, roomId, queue.length]);
 
   const handleTrackSelect = (track: YTTrack) => {
     if (socketRef.current && roomId) {
