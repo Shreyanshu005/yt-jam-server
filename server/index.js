@@ -359,8 +359,15 @@ io.on('connection', (socket) => {
 
     console.log(`Room ${roomId}: Play at ${time}s`);
 
-    // Broadcast to all users in the room except sender
-    socket.to(roomId).emit('play', { time });
+    // Broadcast to all users in the room except sender (include absolute server timestamp for zero-gap compensation)
+    socket.to(roomId).emit('play', { time, timestamp: Date.now() });
+  });
+
+  // Handle precise clock synchronization ping (RTT offset)
+  socket.on('sync-time', (clientTimestamp, callback) => {
+    if (typeof callback === 'function') {
+      callback(Date.now(), clientTimestamp);
+    }
   });
 
   // Handle pause action
@@ -375,7 +382,7 @@ io.on('connection', (socket) => {
     console.log(`Room ${roomId}: Pause at ${time}s`);
 
     // Broadcast to all users in the room except sender
-    socket.to(roomId).emit('pause', { time });
+    socket.to(roomId).emit('pause', { time, timestamp: Date.now() });
   });
 
   // Handle seek action
@@ -390,7 +397,7 @@ io.on('connection', (socket) => {
     console.log(`Room ${roomId}: Seek to ${time}s (playing: ${room.isPlaying})`);
 
     // Broadcast to all users in the room except sender, including playback state
-    socket.to(roomId).emit('seek', { time, isPlaying: room.isPlaying });
+    socket.to(roomId).emit('seek', { time, isPlaying: room.isPlaying, timestamp: Date.now() });
   });
 
   // Handle video change

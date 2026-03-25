@@ -44,6 +44,7 @@ export default function RoomPage() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showParticipants, setShowParticipants] = useState<boolean>(false);
   const [showVideo, setShowVideo] = useState<boolean>(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
 
   // 🎀 Pookie mode detection
   const isPookie = username.toLowerCase() === 'anjali' || nameInput.toLowerCase() === 'anjali';
@@ -56,6 +57,7 @@ export default function RoomPage() {
   const seekDetectionInterval = useRef<any>(null);
   const justJoinedRoom = useRef<boolean>(false);
   const prevMessagesLengthRef = useRef<number>(0);
+  const clockOffsetRef = useRef<number>(0);
 
   const addToast = useCallback((title: string, message: string, type: 'info' | 'success' | 'error' = 'info') => {
     const id = Date.now().toString();
@@ -72,14 +74,25 @@ export default function RoomPage() {
     lastSyncTime.current = Date.now();
     let targetTime = data.currentTime || 0;
     if (data.isPlaying && data.timestamp) {
-      const now = Date.now();
+      const now = Date.now() + clockOffsetRef.current;
       const elapsed = (now - data.timestamp) / 1000;
-      targetTime = data.currentTime + elapsed;
+      targetTime = Math.max(0, data.currentTime + elapsed);
     }
     lastKnownTime.current = targetTime;
     playerRef.current.seekTo(targetTime);
     if (data.isPlaying) {
-      setTimeout(() => { if (playerRef.current) playerRef.current.play(); }, 100);
+      setTimeout(() => { 
+        if (playerRef.current) {
+          playerRef.current.play(); 
+          // Browser Autoplay Policy Detection: If the player is NOT actively playing after 1.5s,
+          // Safari/Chrome has blocked it! Summon the fallback overlay to harvest a native click.
+          setTimeout(() => {
+            if (playerRef.current && !playerRef.current.isPlaying() && !isHost) {
+              setAutoplayBlocked(true);
+            }
+          }, 1500);
+        }
+      }, 100);
     } else {
       setTimeout(() => { if (playerRef.current) playerRef.current.pause(); }, 100);
     }
@@ -106,12 +119,18 @@ export default function RoomPage() {
     if (socket.connected) {
       setIsConnected(true);
       socket.emit('join-room', { roomId, videoId: initialVideoId, username });
+      socket.emit('sync-time', Date.now(), (serverTime: number, clientTimeOriginal: number) => {
+        clockOffsetRef.current = serverTime - (clientTimeOriginal + ((Date.now() - clientTimeOriginal) / 2));
+      });
     }
 
     socket.on('connect', () => {
       setIsConnected(true);
       setUserId(socket.id || '');
       socket.emit('join-room', { roomId, videoId: initialVideoId, username });
+      socket.emit('sync-time', Date.now(), (serverTime: number, clientTimeOriginal: number) => {
+        clockOffsetRef.current = serverTime - (clientTimeOriginal + ((Date.now() - clientTimeOriginal) / 2));
+      });
     });
 
     socket.on('disconnect', () => setIsConnected(false));
@@ -144,9 +163,17 @@ export default function RoomPage() {
     socket.on('play', (data: any) => {
       if (playerRef.current) {
         ignoreNextStateChange.current = true;
-        lastKnownTime.current = data.time;
+        
+        let targetTime = data.time;
+        if (data.timestamp) {
+          const now = Date.now() + clockOffsetRef.current;
+          const elapsed = (now - data.timestamp) / 1000;
+          targetTime += elapsed;
+        }
+        
+        lastKnownTime.current = targetTime;
         lastSyncTime.current = Date.now();
-        playerRef.current.seekTo(data.time);
+        playerRef.current.seekTo(targetTime);
         setTimeout(() => { if (playerRef.current) playerRef.current.play(); }, 50);
         setTimeout(() => { ignoreNextStateChange.current = false; }, 500);
       }
@@ -166,9 +193,17 @@ export default function RoomPage() {
     socket.on('seek', (data: any) => {
       if (playerRef.current) {
         ignoreNextStateChange.current = true;
-        lastKnownTime.current = data.time;
+        
+        let targetTime = data.time;
+        if (data.isPlaying && data.timestamp) {
+          const now = Date.now() + clockOffsetRef.current;
+          const elapsed = (now - data.timestamp) / 1000;
+          targetTime += elapsed;
+        }
+
+        lastKnownTime.current = targetTime;
         lastSyncTime.current = Date.now();
-        playerRef.current.seekTo(data.time);
+        playerRef.current.seekTo(targetTime);
         if (data.isPlaying) {
           setTimeout(() => { if (playerRef.current) playerRef.current.play(); }, 100);
         }
@@ -805,6 +840,33 @@ export default function RoomPage() {
       </main>
 
       <Toast toasts={toasts} removeToast={removeToast} isPookie={isPookie} />
+      {/* Safari/Chrome WebAudio Fallback Unlocker */}
+      {autoplayBlocked && (
+        <div 
+          className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur-md flex items-center justify-center cursor-pointer transition-opacity" 
+          onClick={() => {
+            setAutoplayBlocked(false);
+            if (playerRef.current) {
+              if (typeof playerRef.current.forcePlay === 'function') {
+                playerRef.current.forcePlay();
+              }
+              playerRef.current.play();
+            }
+          }}
+        >
+          <div className="bg-white/10 p-10 rounded-[2rem] border border-white/20 text-center animate-pulse shadow-2xl max-w-sm mx-4 transform transition-all hover:scale-105">
+            <div className={`text-7xl mb-6 ${isPookie ? 'animate-bounce' : ''}`}>
+              {isPookie ? '💖' : '🎵'}
+            </div>
+            <h2 className="text-3xl font-bold text-white mb-3">Tap to Tune In!</h2>
+            <p className="text-gray-300 text-sm">
+              {isPookie 
+                ? "Your browser paused the music to save data! Tap anywhere to vibe with the room!" 
+                : "Your browser paused the audio. Tap anywhere to sync with the room and start listening!"}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
