@@ -328,6 +328,13 @@ io.on('connection', (socket) => {
       name: room.userNames.get(id) || 'Anonymous'
     }));
 
+    // Extrapolate the true current time if the room is actively playing!
+    let extrapolatedTime = room.currentTime;
+    if (room.isPlaying && room.lastUpdate) {
+      const elapsedSeconds = (Date.now() - room.lastUpdate) / 1000;
+      extrapolatedTime += elapsedSeconds;
+    }
+
     // Send current room state to the joining user
     socket.emit('room-state', {
       roomId,
@@ -335,7 +342,7 @@ io.on('connection', (socket) => {
       currentTrack: room.currentTrack,
       queue: room.queue,
       isPlaying: room.isPlaying,
-      currentTime: room.currentTime,
+      currentTime: extrapolatedTime,
       isHost: room.host === socket.id,
       userCount: room.users.size,
       users: usersList,
