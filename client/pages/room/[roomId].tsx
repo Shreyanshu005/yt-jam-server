@@ -43,6 +43,7 @@ export default function RoomPage() {
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showParticipants, setShowParticipants] = useState<boolean>(false);
+  const [showVideo, setShowVideo] = useState<boolean>(false);
 
   // 🎀 Pookie mode detection
   const isPookie = username.toLowerCase() === 'anjali' || nameInput.toLowerCase() === 'anjali';
@@ -272,10 +273,10 @@ export default function RoomPage() {
   const handleVideoEnded = useCallback(() => {
     // Only the host should trigger the next track to prevent multiple clients 
     // from instantly skipping through the entire queue simultaneously.
-    if (isHost && socketRef.current && roomId && queue.length > 0) {
+    if (isHost && socketRef.current && roomId) {
       socketRef.current.emit('next-track', { roomId });
     }
-  }, [isHost, roomId, queue.length]);
+  }, [isHost, roomId]);
 
   const handleTrackSelect = (track: YTTrack) => {
     if (socketRef.current && roomId) {
@@ -610,23 +611,41 @@ export default function RoomPage() {
             <div className="lg:col-span-8 space-y-4">
               {/* Player */}
               <div className="glass-card p-5 overflow-hidden">
-                <YouTubePlayer
-                  videoId={videoId}
-                  onReady={handlePlayerReady}
-                  onStateChange={handleStateChange}
-                  onError={handlePlayerError}
-                  onTimeUpdate={handleTimeUpdate}
-                  onEnded={handleVideoEnded}
-                  autoPlay={true}
-                  showControls={false}
-                  height={100}
-                />
+                <div className="flex justify-between items-center mb-1">
+                  <h2 className={`text-sm font-semibold uppercase tracking-wider ${isPookie ? 'text-pink-300' : 'text-gray-400'}`}>
+                    {isPookie ? '💖 Now Playing' : 'Now Playing'}
+                  </h2>
+                  <button 
+                    onClick={() => setShowVideo(!showVideo)}
+                    className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 font-medium ${isPookie ? 'bg-pink-500/10 hover:bg-pink-500/20 text-pink-200' : 'bg-white/5 hover:bg-white/10 text-gray-300'}`}
+                  >
+                    {showVideo ? (
+                      <><span>⬆️</span> {isPookie ? 'Hide, cutie!' : 'Hide Video'}</>
+                    ) : (
+                      <><span>📺</span> {isPookie ? 'Watch with me!' : 'Show Video'}</>
+                    )}
+                  </button>
+                </div>
+                
+                <div className={`transition-all duration-500 ease-in-out origin-top ${showVideo ? 'h-auto aspect-video mt-4 opacity-100 scale-100' : 'h-0 opacity-0 scale-95 overflow-hidden'}`}>
+                  <YouTubePlayer
+                    videoId={videoId}
+                    onReady={handlePlayerReady}
+                    onStateChange={handleStateChange}
+                    onError={handlePlayerError}
+                    onTimeUpdate={handleTimeUpdate}
+                    onEnded={handleVideoEnded}
+                    autoPlay={true}
+                    showControls={false}
+                    height="100%"
+                  />
+                </div>
                 {playerError && (
                   <div className="mt-4 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
                     <p className="text-red-400 text-sm">⚠️ {playerError}</p>
                   </div>
                 )}
-                {!videoId && (
+                {!videoId && !showVideo && (
                   <div className={`mt-4 rounded-xl p-8 text-center ${isPookie ? 'bg-pink-900/20' : 'bg-white/[0.02]'}`}>
                     <div className="text-4xl mb-3">{isPookie ? '🎀' : '🔍'}</div>
                     <p className={`text-sm ${isPookie ? 'text-pink-200' : 'text-gray-400'}`}>

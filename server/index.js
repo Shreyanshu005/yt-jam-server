@@ -485,23 +485,60 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('next-track', ({ roomId }) => {
+  socket.on('next-track', async ({ roomId }) => {
     const room = rooms.get(roomId);
-    if (!room || room.queue.length === 0) return;
+    if (!room) return;
 
-    // Play first track from queue and remove it
-    const track = room.queue.shift();
-    room.currentTrack = track;
-    room.videoId = track.videoId;
-    room.currentTime = 0;
-    room.isPlaying = true;
-    room.lastUpdate = Date.now();
+    if (room.queue.length > 0) {
+      // Play first track from queue and remove it
+      const track = room.queue.shift();
+      room.currentTrack = track;
+      room.videoId = track.videoId;
+      room.currentTime = 0;
+      room.isPlaying = true;
+      room.lastUpdate = Date.now();
 
-    console.log(`Room ${roomId}: Playing next track from queue`);
+      console.log(`Room ${roomId}: Playing next track from queue`);
 
-    // Broadcast video change and queue update to all users
-    io.to(roomId).emit('video-changed', { videoId: track.videoId, track });
-    io.to(roomId).emit('queue-updated', { queue: room.queue });
+      // Broadcast video change and queue update to all users
+      io.to(roomId).emit('video-changed', { videoId: track.videoId, track });
+      io.to(roomId).emit('queue-updated', { queue: room.queue });
+    } else {
+      // Queue is empty! Fetch a recommended track!
+      console.log(`Room ${roomId}: Queue is empty. Fetching recommended track...`);
+      try {
+        // Find something similar to the current track
+        const currentTitle = room.currentTrack?.title || 'trending music';
+        const fallbackResults = await ytSearch(`${currentTitle} Official Audio`);
+        const videos = fallbackResults.videos || [];
+        
+        // Pick a completely random video from the top 5 to avoid looping the exact same song
+        const topResults = videos.filter(v => v.videoId !== room.videoId).slice(0, 5);
+        const nextVideo = topResults[Math.floor(Math.random() * topResults.length)];
+        
+        if (nextVideo) {
+          const track = {
+            videoId: nextVideo.videoId,
+            title: nextVideo.title,
+            artist: nextVideo.author?.name || 'Unknown',
+            durationSeconds: nextVideo.duration?.seconds || 0,
+            thumbnails: nextVideo.image ? [{ url: nextVideo.image }] : [],
+            type: 'VIDEO'
+          };
+          
+          room.currentTrack = track;
+          room.videoId = track.videoId;
+          room.currentTime = 0;
+          room.isPlaying = true;
+          room.lastUpdate = Date.now();
+          
+          console.log(`Room ${roomId}: Auto-playing recommendation: ${track.title}`);
+          io.to(roomId).emit('video-changed', { videoId: track.videoId, track });
+        }
+      } catch (err) {
+        console.error(`Room ${roomId}: Failed to auto-play recommended track:`, err);
+      }
+    }
   });
 
   socket.on('update-current-track', ({ roomId, track }) => {

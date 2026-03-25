@@ -97,7 +97,7 @@ interface YouTubePlayerProps {
   onEnded?: () => void;
   autoPlay?: boolean;
   showControls?: boolean;
-  height?: number;
+  height?: number | string;
 }
 
 const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
@@ -109,7 +109,7 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   onEnded,
   autoPlay = true,
   showControls = false,
-  height = 100,
+  height = '100%',
 }) => {
   const playerRef = useRef<YTPlayer | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
@@ -265,9 +265,10 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     if (!playerRef.current) {
       const playerId = `youtube-player-${Date.now()}`;
       
-      // Create a div for the player
+      // Create a standard div for the player API to replace
       const playerDiv = document.createElement('div');
       playerDiv.id = playerId;
+      
       playerContainerRef.current.innerHTML = '';
       playerContainerRef.current.appendChild(playerDiv);
 
@@ -375,8 +376,8 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   if (!videoId) {
     return (
       <div 
-        className="w-full bg-gray-900 rounded-lg flex items-center justify-center"
-        style={{ height: `${height}px` }}
+        className="w-full h-full bg-gray-900 rounded-lg flex items-center justify-center"
+        style={{ minHeight: typeof height === 'number' ? `${height}px` : height }}
       >
         <p className="text-gray-500 text-sm">No video selected</p>
       </div>
@@ -387,8 +388,8 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     <>
       <div 
         ref={playerContainerRef}
-        className="w-full bg-black rounded-lg overflow-hidden shadow-2xl"
-        style={{ minHeight: `${height}px` }}
+        className="w-full h-full bg-black rounded-lg overflow-hidden shadow-2xl"
+        style={{ minHeight: typeof height === 'number' ? `${height}px` : height }}
       />
       {/* Silent audio track to keep media session alive in background */}
       <audio 
