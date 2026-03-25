@@ -349,6 +349,21 @@ export default function RoomPage() {
     setUsername(finalName);
     localStorage.setItem('ytjam_username', finalName);
     setShowNamePrompt(false);
+
+    // CRITICAL: Unlock Browser Media Policies!
+    // We play a silent 1ms audio clip the exact millisecond the user clicks Submit/Enter.
+    // This permanently unlocks the tab's AudioContext, giving the async YouTube iframe
+    // universal permission to Autoplay with Sound when it finishes loading ~2 seconds later!
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        ctx.resume().catch(() => {});
+      }
+      const audio = new Audio();
+      audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      audio.play().catch(() => {});
+    } catch (e) {}
   };
 
   // ── Name Prompt ──
