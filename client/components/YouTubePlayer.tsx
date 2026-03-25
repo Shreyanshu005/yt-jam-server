@@ -85,6 +85,7 @@ export interface YouTubePlayerRef {
   mute: () => void;
   unMute: () => void;
   isMuted: () => boolean;
+  loadAndPlay: (vidId: string, startSeconds: number) => void;
   forcePlay: () => void;
 }
 
@@ -98,6 +99,7 @@ interface YouTubePlayerProps {
   autoPlay?: boolean;
   showControls?: boolean;
   height?: number | string;
+  startSeconds?: number;
 }
 
 const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
@@ -110,6 +112,7 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   autoPlay = true,
   showControls = false,
   height = '100%',
+  startSeconds = 0,
 }) => {
   const playerRef = useRef<YTPlayer | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
@@ -117,6 +120,21 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const silenceAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Stale Closure Prevention: Cache event callbacks so the iframe always has the freshest React state
+  const onReadyRef = useRef(onReady);
+  const onStateChangeRef = useRef(onStateChange);
+  const onErrorRef = useRef(onError);
+  const onTimeUpdateRef = useRef(onTimeUpdate);
+  const onEndedRef = useRef(onEnded);
+
+  useEffect(() => {
+    onReadyRef.current = onReady;
+    onStateChangeRef.current = onStateChange;
+    onErrorRef.current = onError;
+    onTimeUpdateRef.current = onTimeUpdate;
+    onEndedRef.current = onEnded;
+  }, [onReady, onStateChange, onError, onTimeUpdate, onEnded]);
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -228,6 +246,16 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
       }
       return false;
     },
+    loadAndPlay: (vidId: string, startSeconds: number) => {
+      // Bypasses race conditions by forcing the iframe to natively buffer starting immediately at the specific time chunk!
+      if (playerRef.current && typeof playerRef.current.loadVideoById === 'function') {
+        try {
+          playerRef.current.loadVideoById(vidId, startSeconds);
+        } catch (e) {
+          console.error("Failed to load and play", e);
+        }
+      }
+    },
     forcePlay: () => {
       // Play the silent audio to activate background playback capabilities
       if (silenceAudioRef.current) {
@@ -249,9 +277,9 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
     if (playerRef.current && currentVideoId && currentVideoId !== videoId) {
       try {
         if (autoPlay) {
-          playerRef.current.loadVideoById(videoId, 0);
+          playerRef.current.loadVideoById(videoId, startSeconds);
         } else {
-          playerRef.current.cueVideoById(videoId, 0);
+          playerRef.current.cueVideoById(videoId, startSeconds);
         }
         setCurrentVideoId(videoId);
       } catch (err) {
@@ -305,37 +333,37 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
               // ignore
             }
 
-            onReady(createPlayerRef());
+            if (onReadyRef.current) onReadyRef.current(createPlayerRef());
           },
           onStateChange: (event: YTPlayerEvent) => {
             const state = event.data;
             console.log('YouTube Player State:', state);
             
             if (state === YT_PLAYER_STATE.PLAYING) {
-              onStateChange(true);
+              if (onStateChangeRef.current) onStateChangeRef.current(true);
               // Start time update interval
               if (timeUpdateIntervalRef.current) {
                 clearInterval(timeUpdateIntervalRef.current);
               }
               timeUpdateIntervalRef.current = setInterval(() => {
-                if (playerRef.current && onTimeUpdate) {
-                  onTimeUpdate(
+                if (playerRef.current && onTimeUpdateRef.current) {
+                  onTimeUpdateRef.current(
                     playerRef.current.getCurrentTime(),
                     playerRef.current.getDuration()
                   );
                 }
               }, 1000);
             } else if (state === YT_PLAYER_STATE.PAUSED) {
-              onStateChange(false);
+              if (onStateChangeRef.current) onStateChangeRef.current(false);
               // Stop time update interval
               if (timeUpdateIntervalRef.current) {
                 clearInterval(timeUpdateIntervalRef.current);
                 timeUpdateIntervalRef.current = null;
               }
             } else if (state === YT_PLAYER_STATE.ENDED) {
-              onStateChange(false);
-              if (onEnded) {
-                onEnded();
+              if (onStateChangeRef.current) onStateChangeRef.current(false);
+              if (onEndedRef.current) {
+                onEndedRef.current();
               }
               // Stop time update interval
               if (timeUpdateIntervalRef.current) {
@@ -346,7 +374,7 @@ const YouTubePlayer: React.FC<YouTubePlayerProps> = ({
           },
           onError: (event: YTPlayerEvent) => {
             console.error('YouTube Player Error:', event.data);
-            onError(event.data);
+            if (onErrorRef.current) onErrorRef.current(event.data);
           },
         },
       });

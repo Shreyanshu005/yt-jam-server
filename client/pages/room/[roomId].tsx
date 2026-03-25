@@ -45,6 +45,7 @@ export default function RoomPage() {
   const [showParticipants, setShowParticipants] = useState<boolean>(false);
   const [showVideo, setShowVideo] = useState<boolean>(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState<boolean>(false);
+  const [startSeconds, setStartSeconds] = useState<number>(0);
 
   // 🎀 Pookie mode detection
   const isPookie = username.toLowerCase() === 'anjali' || nameInput.toLowerCase() === 'anjali';
@@ -79,21 +80,25 @@ export default function RoomPage() {
       targetTime = Math.max(0, data.currentTime + elapsed);
     }
     lastKnownTime.current = targetTime;
-    playerRef.current.seekTo(targetTime);
-    if (data.isPlaying) {
-      setTimeout(() => { 
-        if (playerRef.current) {
-          playerRef.current.play(); 
-          // Browser Autoplay Policy Detection: If the player is NOT actively playing after 1.5s,
+    setStartSeconds(targetTime);
+    
+    if (data.isPlaying && data.videoId) {
+      if (typeof playerRef.current.loadAndPlay === 'function') {
+        playerRef.current.loadAndPlay(data.videoId, targetTime);
+      } else {
+        playerRef.current.seekTo(targetTime);
+        setTimeout(() => { if (playerRef.current) playerRef.current.play(); }, 100);
+      }
+      
+      // Browser Autoplay Policy Detection: If the player is NOT actively playing after 1.5s,
           // Safari/Chrome has blocked it! Summon the fallback overlay to harvest a native click.
           setTimeout(() => {
             if (playerRef.current && !playerRef.current.isPlaying() && !isHost) {
               setAutoplayBlocked(true);
             }
           }, 1500);
-        }
-      }, 100);
     } else {
+      playerRef.current.seekTo(targetTime);
       setTimeout(() => { if (playerRef.current) playerRef.current.pause(); }, 100);
     }
     setTimeout(() => { ignoreNextStateChange.current = false; }, 1500);
@@ -215,10 +220,18 @@ export default function RoomPage() {
       setVideoId(data.videoId);
       if (data.track) setCurrentTrack(data.track);
       setPlayerError(null);
+      setStartSeconds(0);
       lastKnownTime.current = 0;
       lastSyncTime.current = Date.now();
       ignoreNextStateChange.current = true;
-      setTimeout(() => { ignoreNextStateChange.current = false; lastKnownTime.current = 0; }, 2000);
+      setTimeout(() => { 
+        ignoreNextStateChange.current = false; 
+        lastKnownTime.current = 0;
+        // Force play the new track after it buffers
+        if (playerRef.current && !playerRef.current.isPlaying()) {
+          playerRef.current.play();
+        }
+      }, 2000);
     });
 
     socket.on('queue-updated', (data: any) => setQueue(data.queue || []));
@@ -673,6 +686,7 @@ export default function RoomPage() {
                     autoPlay={true}
                     showControls={false}
                     height="100%"
+                    startSeconds={startSeconds}
                   />
                 </div>
                 {playerError && (
