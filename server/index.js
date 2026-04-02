@@ -1,9 +1,11 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const YTMusic = require('ytmusic-api');
 const ytSearch = require('yt-search');
+const ytdl = require('@distube/ytdl-core');
 
 const app = express();
 const server = http.createServer(app);
@@ -261,6 +263,172 @@ app.get('/api/room/:roomId', (req, res) => {
     currentTime: room.currentTime,
     userCount: room.users.size
   });
+});
+
+// -----------------------------
+// YouTube Audio Streaming Proxy
+// -----------------------------
+
+// In-memory cache for ytdl format info (URLs expire after ~6 hours)
+const streamCache = new Map();
+const STREAM_CACHE_TTL = 5 * 60 * 60 * 1000; // 5 hours (safely under YT's ~6h expiry)
+
+function getCachedStreamInfo(videoId) {
+  const cached = streamCache.get(videoId);
+  if (cached && Date.now() - cached.timestamp < STREAM_CACHE_TTL) {
+    return cached;
+  }
+  streamCache.delete(videoId);
+  return null;
+}
+
+async function getStreamInfo(videoId) {
+  const cached = getCachedStreamInfo(videoId);
+  if (cached) return cached;
+
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const info = await ytdl.getInfo(url);
+
+  // Pick the best audio-only format
+  const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
+  const bestFormat = ytdl.chooseFormat(info.formats, {
+    quality: 'highestaudio',
+    filter: 'audioonly',
+  });
+
+  const entry = {
+    videoId,
+    title: info.videoDetails.title,
+    author: info.videoDetails.author?.name || 'Unknown',
+    lengthSeconds: parseInt(info.videoDetails.lengthSeconds) || 0,
+    thumbnails: info.videoDetails.thumbnails || [],
+    bestFormat,
+    audioFormats,
+    timestamp: Date.now(),
+  };
+
+  streamCache.set(videoId, entry);
+
+  // Evict oldest entries if cache grows too large
+  if (streamCache.size > 200) {
+    const oldest = streamCache.keys().next().value;
+    streamCache.delete(oldest);
+  }
+
+  return entry;
+}
+
+// Stream audio endpoint — iOS AVPlayer can play this URL directly
+// GET /api/stream/:videoId
+app.get('/api/stream/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+
+  if (!videoId || !ytdl.validateID(videoId)) {
+    return res.status(400).json({ error: 'Invalid video ID' });
+  }
+
+  try {
+    const info = await getStreamInfo(videoId);
+    const format = info.bestFormat;
+
+    if (!format || !format.url) {
+      return res.status(404).json({ error: 'No audio stream found for this video' });
+    }
+
+    const mimeType = format.mimeType?.split(';')[0] || 'audio/webm';
+
+    // Build proxy request headers — forward Range if present
+    const proxyHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+    if (req.headers.range) {
+      proxyHeaders['Range'] = req.headers.range;
+    }
+
+    // Proxy the audio from YouTube's CDN
+    const audioUrl = new URL(format.url);
+    const transport = audioUrl.protocol === 'https:' ? https : http;
+
+    const proxyReq = transport.get(audioUrl, { headers: proxyHeaders }, (proxyRes) => {
+      // Forward relevant headers back to the client
+      const responseHeaders = {
+        'Content-Type': mimeType,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
+      };
+
+      if (proxyRes.headers['content-length']) {
+        responseHeaders['Content-Length'] = proxyRes.headers['content-length'];
+      }
+      if (proxyRes.headers['content-range']) {
+        responseHeaders['Content-Range'] = proxyRes.headers['content-range'];
+      }
+
+      res.writeHead(proxyRes.statusCode, responseHeaders);
+      proxyRes.pipe(res);
+    });
+
+    proxyReq.on('error', (err) => {
+      console.error('Audio proxy error:', err.message);
+      if (!res.headersSent) {
+        res.status(502).json({ error: 'Failed to fetch audio stream' });
+      }
+    });
+
+    // Clean up when client disconnects
+    req.on('close', () => {
+      proxyReq.destroy();
+    });
+  } catch (error) {
+    console.error('Stream endpoint error:', error.message);
+    // Invalidate cache on error
+    streamCache.delete(videoId);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to stream audio',
+        message: error.message,
+      });
+    }
+  }
+});
+
+// Stream info endpoint — returns metadata + stream URL for the iOS app
+// GET /api/stream-info/:videoId
+app.get('/api/stream-info/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+
+  if (!videoId || !ytdl.validateID(videoId)) {
+    return res.status(400).json({ error: 'Invalid video ID' });
+  }
+
+  try {
+    const info = await getStreamInfo(videoId);
+
+    res.json({
+      videoId: info.videoId,
+      title: info.title,
+      author: info.author,
+      lengthSeconds: info.lengthSeconds,
+      thumbnails: info.thumbnails,
+      streamUrl: `/api/stream/${videoId}`,
+      formats: info.audioFormats.map((f) => ({
+        itag: f.itag,
+        mimeType: f.mimeType,
+        bitrate: f.bitrate,
+        audioBitrate: f.audioBitrate,
+        contentLength: f.contentLength,
+        quality: f.audioQuality,
+      })),
+    });
+  } catch (error) {
+    console.error('Stream info error:', error.message);
+    streamCache.delete(videoId);
+    res.status(500).json({
+      error: 'Failed to get stream info',
+      message: error.message,
+    });
+  }
 });
 
 // Socket.io connection handling
